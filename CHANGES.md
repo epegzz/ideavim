@@ -4,17 +4,59 @@ The Changelog
 History of changes in IdeaVim for the IntelliJ platform.
 
 
+Get an Early Access
+-------------------
+
+Would you like to try new features and fixes? Join the Early Access Program and
+receive EAP builds as updates! Add this URL to "Settings | Plugins |
+Browse Repositories | Manage Repositories":
+[https://plugins.jetbrains.com/plugins/eap/ideavim](https://plugins.jetbrains.com/plugins/eap/ideavim)
+
+It is important to distinguish EAP from traditional pre-release software.
+Please note that the quality of EAP versions may at times be way below even
+usual beta standards.
+
 To Be Released
 --------------
+
+0.47, 2016-10-19
+----------------
+
+A bugfix release.
+
+Bug fixes:
+
+* VIM-1098 Don't start visual selection when mouse click was actually drag over single character
+* VIM-1190 Fixed exception "Write access is allowed from write-safe contexts only"
+
+
+0.46, 2016-07-07
+----------------
 
 Added `incsearch` option for incremental search. Added support for `it` and
 `at` tag block selection. Added `vim-surround` commands `ys`, `cs`, `ds`,
 `S`. Various bug fixes.
 
+Features:
+
 * VIM-769 Added `vim-surround` commands `ys`, `cs`, `ds`, `S`
 * VIM-264 Added tag block selection
 * VIM-271 Added `incsearch` option for showing search results while typing
+* VIM-217 Added support for `={motion}` formatting command
+
+Bug fixes:
+
 * VIM-796 Fixed focus issues with `:action` command
+* VIM-581 Fixed use of special registers `0`-`9` and `-` in delete commands
+* VIM-965 Fixed exception in `[m` in some file types
+* VIM-564 Fixed `g_` move to go to the current line
+* VIM-964 Fixed marks behavior when the whole line got deleted
+* VIM-259 Move caret to the line beginning after `==`
+* VIM-246 Fixed `{count}==` formatting
+* VIM-287 Fixed insert new line before and after folds
+* VIM-139 Focus on current search and use modal confirmation for `:s///gc`
+* VIM-843 Don't highlight search results after restart
+* VIM-1126 Fixed warning about modifying shortcuts of global actions for 2016.2
 
 
 0.44, 2015-11-02

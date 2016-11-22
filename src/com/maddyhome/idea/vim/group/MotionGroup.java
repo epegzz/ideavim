@@ -21,6 +21,8 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.event.*;
+import com.intellij.openapi.editor.ex.DocumentEx;
+import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManagerAdapter;
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
@@ -148,14 +150,11 @@ public class MotionGroup {
     ExOutputModel.getInstance(editor).clear();
 
     CommandState.SubMode visualMode = CommandState.SubMode.NONE;
-    switch (event.getClickCount() % 3) {
-      case 1: // Single click or quad click
-        visualMode = CommandState.SubMode.NONE;
-        break;
-      case 2: // Double click
+    switch (event.getClickCount()) {
+      case 2:
         visualMode = CommandState.SubMode.VISUAL_CHARACTER;
         break;
-      case 0: // Triple click
+      case 3:
         visualMode = CommandState.SubMode.VISUAL_LINE;
         // Pop state of being in Visual Char mode
         if (CommandState.getInstance(editor).getMode() == CommandState.Mode.VISUAL) {
@@ -246,6 +245,7 @@ public class MotionGroup {
 
     int start = editor.getSelectionModel().getSelectionStart();
     int end = editor.getSelectionModel().getSelectionEnd();
+    if (start == end) return;
 
     if (mode == CommandState.SubMode.VISUAL_LINE) {
       end--;
@@ -1039,8 +1039,8 @@ public class MotionGroup {
     return moveCaretToLineStartSkipLeading(editor, logicalLine);
   }
 
-  public int moveCaretToLineStartSkipLeadingOffset(@NotNull Editor editor, int offset) {
-    int line = EditorHelper.normalizeVisualLine(editor, editor.getCaretModel().getVisualPosition().line + offset);
+  public int moveCaretToLineStartSkipLeadingOffset(@NotNull Editor editor, int linesOffset) {
+    int line = EditorHelper.normalizeVisualLine(editor, editor.getCaretModel().getVisualPosition().line + linesOffset);
     return moveCaretToLineStartSkipLeading(editor, EditorHelper.visualLineToLogicalLine(editor, line));
   }
 
@@ -1051,6 +1051,11 @@ public class MotionGroup {
   public int moveCaretToLineEndSkipLeading(@NotNull Editor editor) {
     int logicalLine = editor.getCaretModel().getLogicalPosition().line;
     return moveCaretToLineEndSkipLeading(editor, logicalLine);
+  }
+
+  public int moveCaretToLineEndSkipLeadingOffset(@NotNull Editor editor, int linesOffset) {
+    int line = EditorHelper.normalizeVisualLine(editor, editor.getCaretModel().getVisualPosition().line + linesOffset);
+    return moveCaretToLineEndSkipLeading(editor, EditorHelper.visualLineToLogicalLine(editor, line));
   }
 
   public int moveCaretToLineEndSkipLeading(@NotNull Editor editor, int line) {
@@ -1073,7 +1078,10 @@ public class MotionGroup {
   }
 
   public int moveCaretToLineEnd(@NotNull Editor editor) {
-    return moveCaretToLineEnd(editor, editor.getCaretModel().getLogicalPosition().line, true);
+    final VisualPosition visualPosition = editor.getCaretModel().getVisualPosition();
+    final int lastVisualLineColumn = EditorUtil.getLastVisualLineColumnNumber(editor, visualPosition.line);
+    final VisualPosition visualEndOfLine = new VisualPosition(visualPosition.line, lastVisualLineColumn, true);
+    return moveCaretToLineEnd(editor, editor.visualToLogicalPosition(visualEndOfLine).line, true);
   }
 
   public int moveCaretToLineEnd(@NotNull Editor editor, int line, boolean allowPastEnd) {
@@ -1693,34 +1701,6 @@ public class MotionGroup {
     return true;
   }
 
-  public boolean swapVisualEndsBlock(@NotNull Editor editor) {
-    if (CommandState.getInstance(editor).getSubMode() != CommandState.SubMode.VISUAL_BLOCK) {
-      return swapVisualEnds(editor);
-    }
-
-    LogicalPosition lineStart = editor.getSelectionModel().getBlockStart();
-    LogicalPosition lineEnd = editor.getSelectionModel().getBlockEnd();
-    if (lineStart == null || lineEnd == null) {
-      return false;
-    }
-
-    if (visualStart > visualEnd) {
-      LogicalPosition t = lineEnd;
-      lineEnd = lineStart;
-      lineStart = t;
-    }
-
-    LogicalPosition start = new LogicalPosition(lineStart.line, lineEnd.column);
-    LogicalPosition end = new LogicalPosition(lineEnd.line, lineStart.column);
-
-    visualStart = editor.logicalPositionToOffset(start);
-    visualEnd = editor.logicalPositionToOffset(end);
-
-    moveCaret(editor, visualEnd);
-
-    return true;
-  }
-
   public void moveVisualStart(int startOffset) {
     visualStart = startOffset;
   }
@@ -1749,15 +1729,16 @@ public class MotionGroup {
     private boolean myMakingChanges = false;
 
     public void selectionChanged(@NotNull SelectionEvent selectionEvent) {
-      if (myMakingChanges) {
+      final Editor editor = selectionEvent.getEditor();
+      final Document document = editor.getDocument();
+      if (myMakingChanges || (document instanceof DocumentEx && ((DocumentEx)document).isInEventsHandling())) {
         return;
       }
 
       myMakingChanges = true;
       try {
-        final Editor editor = selectionEvent.getEditor();
         final com.intellij.openapi.util.TextRange newRange = selectionEvent.getNewRange();
-        for (Editor e : EditorFactory.getInstance().getEditors(editor.getDocument())) {
+        for (Editor e : EditorFactory.getInstance().getEditors(document)) {
           if (!e.equals(editor)) {
             e.getSelectionModel().setSelection(newRange.getStartOffset(), newRange.getEndOffset());
           }
