@@ -2,6 +2,12 @@ IdeaVim
 =======
 
 <div>
+  <a href="https://confluence.jetbrains.com/display/ALL/JetBrains+on+GitHub">
+    <img src="http://jb.gg/badges/official.svg" alt="official JetBrains project"/>
+  </a>
+</div>
+
+<div>
   <a href="http://teamcity.jetbrains.com/viewType.html?buildTypeId=IdeaVim_Build&guest=1">
     <img src="http://teamcity.jetbrains.com/app/rest/builds/buildType:(id:IdeaVim_Build)/statusIcon.svg?guest=1"/>
   </a>
@@ -9,15 +15,15 @@ IdeaVim
 </div>
 
 <div>
-  <a href="http://teamcity.jetbrains.com/viewType.html?buildTypeId=IdeaVim_TestsForIntelliJ15&guest=1">
-    <img src="http://teamcity.jetbrains.com/app/rest/builds/buildType:(id:IdeaVim_TestsForIntelliJ15)/statusIcon.svg?guest=1"/>
+  <a href="http://teamcity.jetbrains.com/viewType.html?buildTypeId=IdeaVim_TestsForIntelliJ20182&guest=1">
+    <img src="http://teamcity.jetbrains.com/app/rest/builds/buildType:(id:IdeaVim_TestsForIntelliJ20182)/statusIcon.svg?guest=1"/>
   </a>
   <span>Tests</span>
 </div>
 
 IdeaVim is a Vim emulation plugin for IDEs based on the IntelliJ platform.
-IdeaVim can be used with IntelliJ IDEA, RubyMine, PyCharm, PhpStorm, WebStorm,
-AppCode, CLion, DataGrip and Android Studio.
+IdeaVim can be used with IntelliJ IDEA, PyCharm, CLion, PhpStorm, WebStorm,
+RubyMine, AppCode, DataGrip, GoLand, Cursive, and Android Studio.
 
 Resources:
 
@@ -40,8 +46,10 @@ it is unchecked. At this point your IDE will work with its regular keyboard
 shortcuts.
 
 Keyboard shortcut conflicts between the Vim emulation and the IDE can be
-resolved via "File | Settings | Vim Emulation", "File | Settings | Keymap"
-and key mapping commands in your ~/.ideavimrc file.
+resolved via "File | Settings | Editor | Vim Emulation", "File | Settings |
+Keymap" on Linux & Windows, and by "Preferences | Editor | Vim Emulation",
+"Preferences | Keymap" on macOS. They can also be resolved by key mapping
+commands in your ~/.ideavimrc file.
 
 
 Get an Early Access
@@ -84,6 +92,7 @@ Supported:
 Emulated Vim plugins:
 
 * vim-surround
+* vim-multiple-cursors
 
 Not supported (yet):
 
@@ -92,7 +101,7 @@ Not supported (yet):
 
 See also:
 
-* [List of recently added commands](src/com/maddyhome/idea/vim/package-info.java)
+* [The list of all supported commands](src/com/maddyhome/idea/vim/package-info.java)
 * [Top features and bugs](http://youtrack.jetbrains.com/issues/VIM?q=%23Unresolved+sort+by%3A+votes)
 
 
@@ -119,8 +128,8 @@ have `-Duser.home=/my/alternate/home` then IdeaVim will source
 Emulated Vim Plugins
 --------------------
 
-IdeaVim extensions emulate some plugins of the original Vim. In order to use IdeaVim extensions, you have to enable
-them via this command in your ~/.ideavimrc:
+IdeaVim extensions emulate some plugins of the original Vim. In order to use
+IdeaVim extensions, you have to enable them via this command in your ~/.ideavimrc:
 
     set <extension-name>
 
@@ -129,6 +138,9 @@ Available extensions:
 * surround
     * Emulates [vim-surround](https://github.com/tpope/vim-surround)
     * Commands: `ys`, `cs`, `ds`, `S`
+* multiple-cursors
+    * Emulates [vim-multiple-cursors](https://github.com/terryma/vim-multiple-cursors)
+    * Commands: `<A-n>`, `<A-x>`, `<A-p>`, `g<A-n>`
 
 
 Changes to the IDE
@@ -188,24 +200,25 @@ in the issue tracker.
 
 1. Fork IdeaVim on GitHub and clone the repository on your local machine.
 
-2. Import the project from existing sources in IntelliJ IDEA 15+ (Community or
+2. Import the project from existing sources in IntelliJ IDEA 2018.1 or newer (Community or
    Ultimate) using "File | New | Project from Existing Sources..." or "Import
    Project" from the start window.
 
     * In the project wizard select "Import project from external model | Gradle"
 
-    * Select your Java 6+ JDK as the Gradle JVM, leave other parameters unchanged
+    * Select your Java 8+ JDK as the Gradle JVM, leave other parameters unchanged
 
-3. Create a new plugin run configuration using "Run | Edit Configurations | New
-   Gradle Configuration" and run it in order to launch IntelliJ with the
-   compiled version of the IdeaVim plugin.
+3. Run your IdeaVim plugin within IntelliJ via a Gradle task
 
-    * Select your project as the Gradle project
+    * Select "View | Tool Windows | Gradle" tool window
+    
+    * Launch "ideavim | intellij | runIde" from the tool window
 
-    * Enter "runIdea" as the task to run
+4. Run IdeaVim tests via a Gradle task
 
-4. Create and run a new configuration for running tests by right-clicking on the
-   "test" folder in the project structure and selecting "Run All Tests".
+    * Select "View | Tool Windows | Gradle" tool window
+    
+    * Launch "ideavim | verification | test" from the tool window
 
 5. Build the plugin distribution by running `./gradlew clean buildPlugin` in the
    terminal in your project root.

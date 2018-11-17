@@ -39,6 +39,19 @@ Contributors:
 * [Daniel Leong](mailto:falcone88@gmail.com)
 * [Aleksey Lagoshin](mailto:aleksey@pri-num.com)
 * [Paulo Bu](mailto:pbu_98@yahoo.com)
+* [Giorgos Gaganis](mailto:gaganis@yahoo.com)
+* [Pavel Fatin](mailto:pavel.fatin@jetbrains.com)
+* [tieTYT](mailto:tietyt@gmail.com)
+* [Nick Gieschen](mailto:nickgieschen@gmail.com)
+* [Naoto Ikeno](mailto:ikenox@gmail.com)
+* [Maximilian Luz](mailto:qzed@users.noreply.github.com)
+* [Vladimir Parfinenko](mailto:vparfinenko@excelsior-usa.com)
+* [Florian Hassmann](mailto:hassmann@hwdev.de)
+* [Jan Palus](mailto:jpalus@fastmail.com)
+* [Konstantin Petrov](mailto:kpetrov@ripe.net)
+* [Vasily Alferov](mailto:ya-ikmik2012@yandex.ru)
+* [Vitalii Karavaev](mailto:fkve97@gmail.com)
+* [John Lin](mailto:johnlinp@gmail.com)
 
 If you are a contributor and your name is not listed here, feel free to
 contact the maintainer.
