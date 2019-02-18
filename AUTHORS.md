@@ -52,6 +52,12 @@ Contributors:
 * [Vasily Alferov](mailto:ya-ikmik2012@yandex.ru)
 * [Vitalii Karavaev](mailto:fkve97@gmail.com)
 * [John Lin](mailto:johnlinp@gmail.com)
+* [Alex Plate](mailto:alexpl292@gmail.com)
+* [Matt Ellis](mailto:m.t.ellis@gmail.com)
+* [John Grib](mailto:johngrib82@gmail.com)
+* [Marcel Hild](mailto:hild@b4mad.net)
+* [Vedran Budimcic](mailto:vedranb@gmail.com)
+* [Andrei Gasparovici](mailto:andreigasparovici1@gmail.com)
 
 If you are a contributor and your name is not listed here, feel free to
 contact the maintainer.
