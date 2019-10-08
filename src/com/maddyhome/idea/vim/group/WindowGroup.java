@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.group;
@@ -26,18 +26,18 @@ import com.intellij.openapi.fileEditor.impl.EditorWithProviderComposite;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.maddyhome.idea.vim.VimPlugin;
+import com.maddyhome.idea.vim.helper.RWLockLabel;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class WindowGroup {
-  public WindowGroup() {
-  }
-
   public void closeCurrentWindow(@NotNull DataContext context) {
     final FileEditorManagerEx fileEditorManager = getFileEditorManager(context);
     final EditorWindow window = fileEditorManager.getSplitters().getCurrentWindow();
@@ -54,6 +54,11 @@ public class WindowGroup {
         window.closeAllExcept(null);
       }
     }
+  }
+
+  public void closeAllExceptCurrentTab(@NotNull DataContext context) {
+    final EditorWindow currentWindow = getFileEditorManager(context).getCurrentWindow();
+    currentWindow.closeAllExcept(currentWindow.getSelectedFile());
   }
 
   public void closeAll(@NotNull DataContext context) {
@@ -92,6 +97,7 @@ public class WindowGroup {
     splitWindow(SwingConstants.VERTICAL, context, filename);
   }
 
+  @RWLockLabel.Readonly
   public void selectWindowInRow(@NotNull DataContext context, int relativePosition, boolean vertical) {
     final FileEditorManagerEx fileEditorManager = getFileEditorManager(context);
     final EditorWindow currentWindow = fileEditorManager.getCurrentWindow();

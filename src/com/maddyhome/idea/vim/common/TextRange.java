@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,18 +13,24 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.common;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Please prefer {@link com.maddyhome.idea.vim.group.visual.VimSelection} for visual selection
+ */
 public class TextRange {
+  @Contract(pure = true)
   public TextRange(int start, int end) {
     this(new int[]{start}, new int[]{end});
   }
 
+  @Contract(pure = true)
   public TextRange(int[] starts, int[] ends) {
     this.starts = starts;
     this.ends = ends;
@@ -79,23 +85,31 @@ public class TextRange {
   }
 
   private void normalizeIndex(final int index) {
-    if (index< size() && ends[index] < starts[index]) {
+    if (index < size() && ends[index] < starts[index]) {
       int t = starts[index];
-      starts[0] = ends[index];
+      starts[index] = ends[index];
       ends[index] = t;
     }
   }
 
+  @Contract(mutates = "this")
   public boolean normalize(final int fileSize) {
-    for (int i=0;i<size();i++) {
+    for (int i = 0; i < size(); i++) {
       normalizeIndex(i);
       starts[i] = Math.max(0, Math.min(starts[i], fileSize));
-      if (starts[i] == fileSize) {
+      if (starts[i] == fileSize && fileSize != 0) {
         return false;
       }
       ends[i] = Math.max(0, Math.min(ends[i], fileSize));
     }
     return true;
+  }
+
+  public boolean contains(final int offset) {
+    if (isMultiple()) {
+      return false;
+    }
+    return this.getStartOffset() <= offset && offset < this.getEndOffset();
   }
 
   @NotNull

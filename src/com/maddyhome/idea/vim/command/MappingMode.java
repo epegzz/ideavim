@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.command;
@@ -33,6 +33,10 @@ public enum MappingMode {
    */
   VISUAL,
   /**
+   * Indicates this key mapping applies to Select mode
+   */
+  SELECT,
+  /**
    * Indicates this key mapping applies to Operator Pending mode
    */
   OP_PENDING,
@@ -46,16 +50,21 @@ public enum MappingMode {
   CMD_LINE;
 
   public static final EnumSet<MappingMode> N = EnumSet.of(NORMAL);
-  public static final EnumSet<MappingMode> V = EnumSet.of(VISUAL);
+  public static final EnumSet<MappingMode> X = EnumSet.of(VISUAL);
   public static final EnumSet<MappingMode> O = EnumSet.of(OP_PENDING);
   public static final EnumSet<MappingMode> I = EnumSet.of(INSERT);
   public static final EnumSet<MappingMode> C = EnumSet.of(CMD_LINE);
+  public static final EnumSet<MappingMode> S = EnumSet.of(SELECT);
+  public static final EnumSet<MappingMode> V = EnumSet.of(VISUAL, SELECT);
 
   public static final EnumSet<MappingMode> NO = EnumSet.of(NORMAL, OP_PENDING);
-  public static final EnumSet<MappingMode> VO = EnumSet.of(VISUAL, OP_PENDING);
-  public static final EnumSet<MappingMode> NV = EnumSet.of(NORMAL, VISUAL);
+  public static final EnumSet<MappingMode> XO = EnumSet.of(VISUAL, OP_PENDING);
+  public static final EnumSet<MappingMode> NX = EnumSet.of(NORMAL, VISUAL);
   public static final EnumSet<MappingMode> IC = EnumSet.of(INSERT, CMD_LINE);
+  public static final EnumSet<MappingMode> NV = EnumSet.of(NORMAL, VISUAL, SELECT);
 
-  public static final EnumSet<MappingMode> NVO = EnumSet.of(NORMAL, VISUAL, OP_PENDING);
+  public static final EnumSet<MappingMode> NXO = EnumSet.of(NORMAL, VISUAL, OP_PENDING);
+  public static final EnumSet<MappingMode> NVO = EnumSet.of(NORMAL, VISUAL, OP_PENDING, SELECT);
+
   public static final EnumSet<MappingMode> ALL = EnumSet.allOf(MappingMode.class);
 }

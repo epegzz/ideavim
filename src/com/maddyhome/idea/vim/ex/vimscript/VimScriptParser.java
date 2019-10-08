@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.ex.vimscript;
@@ -55,6 +55,27 @@ public class VimScriptParser {
         final File file = new File(homeDirName, fileName);
         if (file.exists()) {
           return file;
+        }
+      }
+    }
+    return null;
+  }
+
+  @Nullable
+  public static File findOrCreateIdeaVimRc() {
+    final File found = findIdeaVimRc();
+    if (found != null) return found;
+
+    final String homeDirName = System.getProperty("user.home");
+    if (homeDirName != null) {
+      for (String fileName : VIMRC_FILES) {
+        try {
+          final File file = new File(homeDirName, fileName);
+          //noinspection ResultOfMethodCallIgnored
+          file.createNewFile();
+          return file;
+        } catch (IOException ignored) {
+          // Try to create one of two files
         }
       }
     }

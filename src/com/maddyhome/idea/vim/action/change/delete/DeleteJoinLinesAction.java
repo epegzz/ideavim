@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,42 +13,64 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.change.delete;
 
 import com.intellij.openapi.actionSystem.DataContext;
-import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.actionSystem.EditorAction;
+import com.intellij.openapi.util.Ref;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Argument;
-import com.maddyhome.idea.vim.handler.CaretOrder;
+import com.maddyhome.idea.vim.command.Command;
+import com.maddyhome.idea.vim.command.MappingMode;
 import com.maddyhome.idea.vim.handler.ChangeEditorActionHandler;
+import com.maddyhome.idea.vim.option.OptionsManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- */
-public class DeleteJoinLinesAction extends EditorAction {
-  public DeleteJoinLinesAction() {
-    super(new Handler());
+import javax.swing.*;
+import java.util.List;
+import java.util.Set;
+
+
+public class DeleteJoinLinesAction extends ChangeEditorActionHandler.SingleExecution {
+  @NotNull
+  @Override
+  public Set<MappingMode> getMappingModes() {
+    return MappingMode.N;
   }
 
-  private static class Handler extends ChangeEditorActionHandler {
-    public Handler() {
-      super(true, CaretOrder.DECREASING_OFFSET);
-    }
+  @NotNull
+  @Override
+  public Set<List<KeyStroke>> getKeyStrokesSet() {
+    return parseKeysSet("gJ");
+  }
 
-    @Override
-    public boolean execute(@NotNull Editor editor, @NotNull Caret caret, @NotNull DataContext context, int count,
-                           int rawCount, @Nullable Argument argument) {
-      if (editor.isOneLineMode()) {
-        return false;
-      }
+  @NotNull
+  @Override
+  public Command.Type getType() {
+    return Command.Type.DELETE;
+  }
 
-      return VimPlugin.getChange().deleteJoinLines(editor, caret, count, false);
+  @Override
+  public boolean execute(@NotNull Editor editor,
+                         @NotNull DataContext context,
+                         int count,
+                         int rawCount,
+                         @Nullable Argument argument) {
+    if (editor.isOneLineMode()) return false;
+
+    if (OptionsManager.INSTANCE.getIdeajoin().isSet()) {
+      return VimPlugin.getChange().joinViaIdeaByCount(editor, context, count);
     }
+    VimPlugin.getEditor().notifyIdeaJoin(editor.getProject());
+
+    Ref<Boolean> res = Ref.create(true);
+    editor.getCaretModel().runForEachCaret(caret -> {
+      if (!VimPlugin.getChange().deleteJoinLines(editor, caret, count, false)) res.set(false);
+    }, true);
+    return res.get();
   }
 }

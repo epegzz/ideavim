@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,33 +13,58 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.copy;
 
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Argument;
+import com.maddyhome.idea.vim.command.Command;
+import com.maddyhome.idea.vim.command.MappingMode;
+import com.maddyhome.idea.vim.common.Register;
+import com.maddyhome.idea.vim.group.copy.PutData;
 import com.maddyhome.idea.vim.handler.ChangeEditorActionHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- */
-public class PutTextBeforeCursorAction extends EditorAction {
-  public PutTextBeforeCursorAction() {
-    super(new ChangeEditorActionHandler() {
-      @Override
-      public boolean execute(@NotNull Editor editor,
-                             @NotNull DataContext context,
-                             int count,
-                             int rawCount,
-                             @Nullable Argument argument) {
-        return VimPlugin.getCopy().putText(editor, context, count, true, false, true);
-      }
-    });
+import javax.swing.*;
+import java.util.List;
+import java.util.Set;
+
+public class PutTextBeforeCursorAction extends ChangeEditorActionHandler.SingleExecution {
+  @NotNull
+  @Override
+  public Set<MappingMode> getMappingModes() {
+    return MappingMode.N;
+  }
+
+  @NotNull
+  @Override
+  public Set<List<KeyStroke>> getKeyStrokesSet() {
+    return parseKeysSet("P");
+  }
+
+  @NotNull
+  @Override
+  public Command.Type getType() {
+    return Command.Type.OTHER_SELF_SYNCHRONIZED;
+  }
+
+  @Override
+  public boolean execute(@NotNull Editor editor,
+                         @NotNull DataContext context,
+                         int count,
+                         int rawCount,
+                         @Nullable Argument argument) {
+    final Register lastRegister = VimPlugin.getRegister().getLastRegister();
+
+    final PutData.TextData textData =
+      lastRegister != null ? new PutData.TextData(lastRegister.getText(), lastRegister.getType(),
+                                                  lastRegister.getTransferableData()) : null;
+    final PutData putData = new PutData(textData, null, count, true, true, false, -1);
+    return VimPlugin.getPut().putText(editor, context, putData);
   }
 }

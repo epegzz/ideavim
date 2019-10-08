@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,32 +13,36 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.group;
 
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.ide.bookmarks.Bookmark;
+import com.intellij.ide.bookmarks.BookmarkManager;
+import com.intellij.ide.bookmarks.BookmarksListener;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.LogicalPosition;
-import com.intellij.openapi.editor.event.*;
+import com.intellij.openapi.editor.event.DocumentEvent;
+import com.intellij.openapi.editor.event.DocumentListener;
+import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
-import com.maddyhome.idea.vim.EventFacade;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Command;
 import com.maddyhome.idea.vim.command.CommandState;
 import com.maddyhome.idea.vim.common.Jump;
 import com.maddyhome.idea.vim.common.Mark;
 import com.maddyhome.idea.vim.common.TextRange;
-import com.maddyhome.idea.vim.helper.EditorData;
 import com.maddyhome.idea.vim.helper.EditorHelper;
 import com.maddyhome.idea.vim.helper.SearchHelper;
+import com.maddyhome.idea.vim.option.OptionsManager;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -55,17 +59,10 @@ public class MarkGroup {
   public static final char MARK_CHANGE_END = ']';
   public static final char MARK_CHANGE_POS = '.';
 
-  /**
-   * Creates the class
-   */
-  public MarkGroup() {
-    EventFacade.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
-      public void editorReleased(@NotNull EditorFactoryEvent event) {
-        // Save off the last caret position of the file before it is closed
-        Editor editor = event.getEditor();
-        setMark(editor, '"', editor.getCaretModel().getOffset());
-      }
-    }, ApplicationManager.getApplication());
+  public void editorReleased(@NotNull EditorFactoryEvent event) {
+    // Save off the last caret position of the file before it is closed
+    Editor editor = event.getEditor();
+    setMark(editor, '"', editor.getCaretModel().getOffset());
   }
 
   /**
@@ -93,7 +90,7 @@ public class MarkGroup {
     // Make sure this is a valid mark
     if (VALID_GET_MARKS.indexOf(ch) < 0) return null;
 
-    VirtualFile vf = EditorData.getVirtualFile(editor);
+    VirtualFile vf = EditorHelper.getVirtualFile(editor);
     if ("{}".indexOf(ch) >= 0 && vf != null) {
       int offset = SearchHelper.findNextParagraph(editor, editor.getCaretModel().getPrimaryCaret(), ch == '{' ? -1 : 1,
                                                   false);
@@ -195,7 +192,7 @@ public class MarkGroup {
     if (ch == '`') ch = '\'';
     LogicalPosition lp = editor.offsetToLogicalPosition(offset);
 
-    final VirtualFile vf = EditorData.getVirtualFile(editor);
+    final VirtualFile vf = EditorHelper.getVirtualFile(editor);
     if (vf == null) {
       return false;
     }
@@ -220,9 +217,35 @@ public class MarkGroup {
       if (oldMark != null) {
         oldMark.clear();
       }
+      setSystemMark(ch, lp.line, editor);
     }
 
     return true;
+  }
+
+  private void setSystemMark(char ch, int line, @NotNull Editor editor) {
+    if (!OptionsManager.INSTANCE.getIdeamarks().isSet()) return;
+    final Project project = editor.getProject();
+    if (project == null) return;
+    final BookmarkManager bookmarkManager = BookmarkManager.getInstance(project);
+
+    Bookmark bookmark = bookmarkManager.findEditorBookmark(editor.getDocument(), line);
+    if (bookmark != null && bookmark.getMnemonic() == ch) return;
+
+    final VirtualFile virtualFile = EditorHelper.getVirtualFile(editor);
+    if (virtualFile == null) return;
+    bookmark = bookmarkManager.addTextBookmark(virtualFile, line, "");
+    bookmarkManager.setMnemonic(bookmark, ch);
+  }
+
+  private void removeSystemMark(char ch, @NotNull Editor editor) {
+    if (!OptionsManager.INSTANCE.getIdeamarks().isSet()) return;
+    final Project project = editor.getProject();
+    if (project == null) return;
+    final BookmarkManager bookmarkManager = BookmarkManager.getInstance(project);
+
+    Bookmark bookmark = bookmarkManager.findBookmarkForMnemonic(ch);
+    if (bookmark != null) bookmarkManager.removeBookmark(bookmark);
   }
 
   private String extractProtocol(@NotNull VirtualFile vf) {
@@ -266,7 +289,7 @@ public class MarkGroup {
   }
 
   private void addJump(@NotNull Editor editor, int offset, boolean reset) {
-    final VirtualFile vf = EditorData.getVirtualFile(editor);
+    final VirtualFile vf = EditorHelper.getVirtualFile(editor);
     if (vf == null) {
       return;
     }
@@ -297,13 +320,22 @@ public class MarkGroup {
     }
   }
 
-  private void removeMark(char ch, @NotNull Mark mark) {
+  public void resetAllMarks() {
+    globalMarks.clear();
+    fileMarks.clear();
+  }
+
+  public void removeMark(char ch, @NotNull Mark mark, @NotNull Editor editor) {
     if (FILE_MARKS.indexOf(ch) >= 0) {
       HashMap fmarks = getFileMarks(mark.getFilename());
       fmarks.remove(ch);
     }
     else if (GLOBAL_MARKS.indexOf(ch) >= 0) {
+      // Global marks are added to global and file marks
+      HashMap fmarks = getFileMarks(mark.getFilename());
+      fmarks.remove(ch);
       globalMarks.remove(ch);
+      removeSystemMark(ch, editor);
     }
 
     mark.clear();
@@ -582,7 +614,7 @@ public class MarkGroup {
                                             && delStartOff == markLineStartOff;
           // If the marked line is completely within the deleted text, remove the mark (except the special case)
           if (delStartOff <= markLineStartOff && delEndOff >= markLineEndOff && !changeFromMarkLineStart) {
-            VimPlugin.getMark().removeMark(ch, mark);
+            VimPlugin.getMark().removeMark(ch, mark, editor);
             logger.debug("Removed mark");
           }
           // The deletion only covers part of the marked line so shift the mark only if the deletion begins
@@ -631,6 +663,7 @@ public class MarkGroup {
       this.timestamp = timestamp;
     }
 
+    @Override
     public V put(K key, V value) {
       timestamp = new Date();
       return super.put(key, value);
@@ -643,10 +676,12 @@ public class MarkGroup {
    * This class is used to listen to editor document changes
    */
   public static class MarkUpdater implements DocumentListener {
+
+    public static MarkUpdater INSTANCE = new MarkUpdater();
     /**
      * Creates the listener for the supplied editor
      */
-    public MarkUpdater() {
+    private MarkUpdater() {
     }
 
     /**
@@ -655,6 +690,7 @@ public class MarkGroup {
      *
      * @param event The change event
      */
+    @Override
     public void beforeDocumentChange(@NotNull DocumentEvent event) {
       if (!VimPlugin.isEnabled()) return;
 
@@ -673,6 +709,7 @@ public class MarkGroup {
      *
      * @param event The change event
      */
+    @Override
     public void documentChanged(@NotNull DocumentEvent event) {
       if (!VimPlugin.isEnabled()) return;
 
@@ -698,6 +735,63 @@ public class MarkGroup {
     }
   }
 
+  public static class MarkListener implements BookmarksListener {
+    @Override
+    public void bookmarkAdded(@NotNull Bookmark b) {
+      if (!OptionsManager.INSTANCE.getIdeamarks().isSet()) return;
+
+      if (GLOBAL_MARKS.indexOf(b.getMnemonic()) != -1) {
+        try {
+          OptionsManager.INSTANCE.getIdeamarks().reset();
+          final Editor editor = EditorHelper.getEditor(b.getFile());
+          if (editor == null) return;
+
+          final Mark existing = VimPlugin.getMark().getMark(editor, b.getMnemonic());
+          if (existing != null
+              && existing.getFilename() != null
+              && existing.getFilename().equals(b.getFile().getCanonicalPath())
+              && existing.getLogicalLine() == b.getLine()) {
+            return;
+          }
+
+          VimPlugin.getMark().setMark(editor, b.getMnemonic(),
+                                      VimPlugin.getMotion().moveCaretToLineStartSkipLeading(editor, b.getLine()));
+        }
+        finally {
+          OptionsManager.INSTANCE.getIdeamarks().set();
+        }
+      }
+    }
+
+    @Override
+    public void bookmarkRemoved(@NotNull Bookmark b) {
+      if (!OptionsManager.INSTANCE.getIdeamarks().isSet()) return;
+
+      if (GLOBAL_MARKS.indexOf(b.getMnemonic()) != -1) {
+        try {
+          OptionsManager.INSTANCE.getIdeamarks().reset();
+          final Editor editor = EditorHelper.getEditor(b.getFile());
+          if (editor == null) return;
+
+          final Mark mark = VimPlugin.getMark().getMark(editor, b.getMnemonic());
+          if (mark != null) VimPlugin.getMark().removeMark(b.getMnemonic(), mark, editor);
+        }
+        finally {
+          OptionsManager.INSTANCE.getIdeamarks().set();
+        }
+      }
+    }
+
+    @Override
+    public void bookmarkChanged(@NotNull Bookmark b) {
+      if (!OptionsManager.INSTANCE.getIdeamarks().isSet()) return;
+
+      if (GLOBAL_MARKS.indexOf(b.getMnemonic()) != -1) {
+        this.bookmarkAdded(b);
+      }
+    }
+  }
+
   @NotNull private final HashMap<String, FileMarks<Character, Mark>> fileMarks = new HashMap<>();
   @NotNull private final HashMap<Character, Mark> globalMarks = new HashMap<>();
   @NotNull private final List<Jump> jumps = new ArrayList<>();
@@ -706,19 +800,38 @@ public class MarkGroup {
   private static final int SAVE_MARK_COUNT = 20;
   private static final int SAVE_JUMP_COUNT = 100;
 
-  private static final String WR_GLOBAL_MARKS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  private static final String WR_FILE_MARKS = "abcdefghijklmnopqrstuvwxyz'";
-  private static final String RO_GLOBAL_MARKS = "0123456789";
-  private static final String RO_FILE_MARKS = ".[]<>^{}()";
-  private static final String SAVE_FILE_MARKS = WR_FILE_MARKS + ".^[]\"";
+  public static final String WR_GLOBAL_MARKS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  public static final String WR_REGULAR_FILE_MARKS = "abcdefghijklmnopqrstuvwxyz";
+  /** Marks: abcdefghijklmnopqrstuvwxyz' */
+  private static final String WR_FILE_MARKS = WR_REGULAR_FILE_MARKS + "'";
 
+  public static final String RO_GLOBAL_MARKS = "0123456789";
+  private static final String RO_FILE_MARKS = ".[]<>^{}()";
+
+  private static final String DEL_CONTEXT_FILE_MARKS = ".^[]\"";
+  /** Marks: .^[]"abcdefghijklmnopqrstuvwxyz */
+  public static final String DEL_FILE_MARKS = DEL_CONTEXT_FILE_MARKS + WR_REGULAR_FILE_MARKS;
+  /** Marks: 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*/
+  private static final String DEL_GLOBAL_MARKS = RO_GLOBAL_MARKS + WR_GLOBAL_MARKS;
+  /** Marks: .^[]"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ  */
+  public static final String DEL_MARKS = DEL_FILE_MARKS + DEL_GLOBAL_MARKS;
+
+  /** Marks: abcdefghijklmnopqrstuvwxyz'.^[]" */
+  private static final String SAVE_FILE_MARKS = WR_FILE_MARKS + DEL_CONTEXT_FILE_MARKS;
+
+  /** Marks: ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 */
   private static final String GLOBAL_MARKS = WR_GLOBAL_MARKS + RO_GLOBAL_MARKS;
+  /** Marks: abcdefghijklmnopqrstuvwxyz'[]<>^{}() */
   private static final String FILE_MARKS = WR_FILE_MARKS + RO_FILE_MARKS;
 
+  /** Marks: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' */
   private static final String WRITE_MARKS = WR_GLOBAL_MARKS + WR_FILE_MARKS;
+  /** Marks: 0123456789.[]<>^{}() */
   private static final String READONLY_MARKS = RO_GLOBAL_MARKS + RO_FILE_MARKS;
 
+  /** Marks: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' */
   private static final String VALID_SET_MARKS = WRITE_MARKS;
+  /** Marks: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'0123456789.[]<>^{}() */
   private static final String VALID_GET_MARKS = WRITE_MARKS + READONLY_MARKS;
 
   private static final Logger logger = Logger.getInstance(MarkGroup.class.getName());

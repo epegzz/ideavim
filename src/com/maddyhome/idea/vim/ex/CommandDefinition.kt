@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,43 +13,23 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.ex
 
 data class CommandName(val required: String, val optional: String = "")
 
-inline fun commands(addCommands: CommandNameBuilder.() -> Unit): Array<CommandName> {
-    val commands = CommandNameBuilder()
-    commands.addCommands()
-    return commands.build()
-}
+fun commands(vararg commands: String) = commands.map { command ->
+  commandPattern.matchEntire(command)?.groupValues?.let { CommandName(it[1], it[2]) }
+    ?: throw RuntimeException("$command is invalid!")
+}.toTypedArray()
 
-fun flags(vararg flags: Int): Int {
-    return flags.reduce { acc, i -> acc or i }
-}
+fun flags(
+  rangeFlag: CommandHandler.RangeFlag,
+  argumentFlag: CommandHandler.ArgumentFlag,
+  access: CommandHandler.Access,
+  vararg flags: CommandHandler.Flag
+) = CommandHandlerFlags(rangeFlag, argumentFlag, access, flags.toSet())
 
-class CommandNameBuilder {
-    val commands = hashSetOf<CommandName>()
-
-    operator fun String.unaryPlus(): CommandName {
-        val command = CommandName(this)
-        commands.add(command)
-        return command
-    }
-
-    operator fun CommandName.unaryPlus(): CommandName {
-        commands.add(this)
-        return this
-    }
-
-    infix fun CommandName.withOptional(optional: String): CommandName {
-        val command = CommandName(this.required, optional)
-        commands.remove(this)
-        commands.add(command)
-        return command
-    }
-
-    fun build() = commands.toTypedArray()
-}
+private val commandPattern: Regex = "^([^\\[]+)(?:\\[([^]]+)])?\$".toRegex()

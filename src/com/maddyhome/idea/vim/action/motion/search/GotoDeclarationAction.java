@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,34 +13,59 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.motion.search;
 
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.maddyhome.idea.vim.KeyHandler;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Command;
-import com.maddyhome.idea.vim.handler.EditorActionHandlerBase;
+import com.maddyhome.idea.vim.command.CommandFlags;
+import com.maddyhome.idea.vim.command.MappingMode;
+import com.maddyhome.idea.vim.handler.VimActionHandler;
 import org.jetbrains.annotations.NotNull;
 
-/**
- *
- */
-public class GotoDeclarationAction extends EditorAction {
-  public GotoDeclarationAction() {
-    super(new Handler());
+import javax.swing.*;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+
+
+public class GotoDeclarationAction extends VimActionHandler.SingleExecution {
+
+  @NotNull
+  @Override
+  public Set<MappingMode> getMappingModes() {
+    return MappingMode.NX;
   }
 
-  private static class Handler extends EditorActionHandlerBase {
-    protected boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
-      VimPlugin.getMark().saveJumpLocation(editor);
-      KeyHandler.executeAction("GotoDeclaration", context);
+  @NotNull
+  @Override
+  public Set<List<KeyStroke>> getKeyStrokesSet() {
+    // TODO: <C-]> is a tag command similar to gD, the tag stack is not implemented
+    return parseKeysSet("gD", "gd", "<C-]>");
+  }
 
-      return true;
-    }
+  @NotNull
+  @Override
+  public Command.Type getType() {
+    return Command.Type.OTHER_READONLY;
+  }
+
+  @NotNull
+  @Override
+  public EnumSet<CommandFlags> getFlags() {
+    return EnumSet.of(CommandFlags.FLAG_SAVE_JUMP);
+  }
+
+  @Override
+  public boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
+    VimPlugin.getMark().saveJumpLocation(editor);
+    KeyHandler.executeAction("GotoDeclaration", context);
+
+    return true;
   }
 }

@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,33 +13,37 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.group;
 
+import com.intellij.find.EditorSearchSession;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.ColorKey;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.EditorFontType;
-import com.intellij.openapi.editor.event.*;
+import com.intellij.openapi.editor.event.CaretEvent;
+import com.intellij.openapi.editor.event.CaretListener;
+import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
+import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.project.Project;
-import com.maddyhome.idea.vim.EventFacade;
 import com.maddyhome.idea.vim.KeyHandler;
 import com.maddyhome.idea.vim.VimPlugin;
-import com.maddyhome.idea.vim.command.CommandState;
 import com.maddyhome.idea.vim.helper.*;
 import com.maddyhome.idea.vim.option.OptionChangeEvent;
 import com.maddyhome.idea.vim.option.OptionChangeListener;
-import com.maddyhome.idea.vim.option.Options;
+import com.maddyhome.idea.vim.option.OptionsManager;
+import gnu.trove.TIntFunction;
+import kotlin.text.StringsKt;
 import org.jdom.Element;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 
@@ -56,64 +60,13 @@ public class EditorGroup {
   private boolean isRefrainFromScrolling = false;
   private Boolean isKeyRepeat = null;
 
-  private final CaretListener myLineNumbersCaretListener = new CaretAdapter() {
+  private final CaretListener myLineNumbersCaretListener = new CaretListener() {
     @Override
-    public void caretPositionChanged(CaretEvent e) {
-      updateLineNumbers(e.getEditor());
+    public void caretPositionChanged(@NotNull CaretEvent e) {
+      final boolean requiresRepaint = e.getNewPosition().line != e.getOldPosition().line;
+      updateLineNumbers(e.getEditor(), requiresRepaint);
     }
   };
-
-  private final LineNumbersGutterProvider myLineNumbersGutterProvider = new LineNumbersGutterProvider();
-
-  public EditorGroup() {
-    final Options options = Options.getInstance();
-    final OptionChangeListener numbersChangeListener = new OptionChangeListener() {
-      @Override
-      public void valueChange(OptionChangeEvent event) {
-        for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
-          updateLineNumbers(editor);
-        }
-      }
-    };
-    options.getOption(Options.NUMBER).addOptionChangeListener(numbersChangeListener);
-    options.getOption(Options.RELATIVE_NUMBER).addOptionChangeListener(numbersChangeListener);
-
-    EventFacade.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
-      @Override
-      public void editorCreated(@NotNull EditorFactoryEvent event) {
-        final Editor editor = event.getEditor();
-        isBlockCursor = editor.getSettings().isBlockCursor();
-        isAnimatedScrolling = editor.getSettings().isAnimatedScrolling();
-        isRefrainFromScrolling = editor.getSettings().isRefrainFromScrolling();
-        EditorData.initializeEditor(editor);
-        DocumentManager.getInstance().addListeners(editor.getDocument());
-        VimPlugin.getKey().registerRequiredShortcutKeys(editor);
-
-        if (VimPlugin.isEnabled()) {
-          initLineNumbers(editor);
-          // Turn on insert mode if editor doesn't have any file
-          if (!EditorData.isFileEditor(editor) && editor.getDocument().isWritable() &&
-              !CommandState.inInsertMode(editor)) {
-            KeyHandler.getInstance().handleKey(editor, KeyStroke.getKeyStroke('i'), new EditorDataContext(editor));
-          }
-          editor.getSettings().setBlockCursor(!CommandState.inInsertMode(editor));
-          editor.getSettings().setAnimatedScrolling(ANIMATED_SCROLLING_VIM_VALUE);
-          editor.getSettings().setRefrainFromScrolling(REFRAIN_FROM_SCROLLING_VIM_VALUE);
-        }
-      }
-
-      @Override
-      public void editorReleased(@NotNull EditorFactoryEvent event) {
-        final Editor editor = event.getEditor();
-        deinitLineNumbers(editor);
-        EditorData.unInitializeEditor(editor);
-        VimPlugin.getKey().unregisterShortcutKeys(editor);
-        editor.getSettings().setAnimatedScrolling(isAnimatedScrolling);
-        editor.getSettings().setRefrainFromScrolling(isRefrainFromScrolling);
-        DocumentManager.getInstance().removeListeners(editor.getDocument());
-      }
-    }, ApplicationManager.getApplication());
-  }
 
   public void turnOn() {
     setCursors(BLOCK_CURSOR_VIM_VALUE);
@@ -121,9 +74,7 @@ public class EditorGroup {
     setRefrainFromScrolling(REFRAIN_FROM_SCROLLING_VIM_VALUE);
 
     for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
-      if (!EditorData.getEditorGroup(editor)) {
-        initLineNumbers(editor);
-      }
+      initLineNumbers(editor);
     }
   }
 
@@ -133,56 +84,129 @@ public class EditorGroup {
     setRefrainFromScrolling(isRefrainFromScrolling);
 
     for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
-      deinitLineNumbers(editor);
+      deinitLineNumbers(editor, false);
     }
   }
 
   private void initLineNumbers(@NotNull final Editor editor) {
-    editor.getCaretModel().addCaretListener(myLineNumbersCaretListener);
-    EditorData.setEditorGroup(editor, true);
-
-    final EditorSettings settings = editor.getSettings();
-    EditorData.setLineNumbersShown(editor, settings.isLineNumbersShown());
-    updateLineNumbers(editor);
-  }
-
-  private void deinitLineNumbers(@NotNull Editor editor) {
-    editor.getCaretModel().removeCaretListener(myLineNumbersCaretListener);
-    EditorData.setEditorGroup(editor, false);
-
-    editor.getGutter().closeAllAnnotations();
-
-    final Project project = editor.getProject();
-    if (project == null || project.isDisposed()) return;
-
-    editor.getSettings().setLineNumbersShown(EditorData.isLineNumbersShown(editor));
-  }
-
-  private void updateLineNumbers(@NotNull Editor editor) {
-    if (!EditorData.isFileEditor(editor)) {
+    if (!supportsVimLineNumbers(editor) || UserDataManager.getVimEditorGroup(editor)) {
       return;
     }
 
-    final Options options = Options.getInstance();
-    final boolean relativeLineNumber = options.isSet(Options.RELATIVE_NUMBER);
-    final boolean lineNumber = options.isSet(Options.NUMBER);
+    editor.getCaretModel().addCaretListener(myLineNumbersCaretListener);
+    UserDataManager.setVimEditorGroup(editor, true);
+
+    UserDataManager.setVimLineNumbersInitialState(editor, editor.getSettings().isLineNumbersShown());
+    updateLineNumbers(editor, true);
+  }
+
+  private void deinitLineNumbers(@NotNull Editor editor, boolean isReleasing) {
+    if (!supportsVimLineNumbers(editor) || !UserDataManager.getVimEditorGroup(editor)) {
+      return;
+    }
+
+    editor.getCaretModel().removeCaretListener(myLineNumbersCaretListener);
+    UserDataManager.setVimEditorGroup(editor, false);
+
+    removeRelativeLineNumbers(editor);
+
+    // Don't reset the built in line numbers if we're releasing the editor. If we do, EditorSettings.setLineNumbersShown
+    // can cause the editor to refresh settings and can call into FileManagerImpl.getCachedPsiFile AFTER FileManagerImpl
+    // has been disposed (Closing the project with a Find Usages result showing a preview panel is a good repro case).
+    // See IDEA-184351 and VIM-1671
+    if (!isReleasing) {
+      setBuiltinLineNumbers(editor, UserDataManager.getVimLineNumbersInitialState(editor));
+    }
+  }
+
+  private static boolean supportsVimLineNumbers(@NotNull final Editor editor) {
+    // We only support line numbers in editors that are file based, and that aren't for diffs, which control their
+    // own line numbers, often using EditorGutterComponentEx#setLineNumberConvertor
+    return EditorHelper.isFileEditor(editor) && !EditorHelper.isDiffEditor(editor);
+  }
+
+  private static void updateLineNumbers(@NotNull final Editor editor, final boolean requiresRepaint) {
+    final boolean relativeNumber = OptionsManager.INSTANCE.getRelativenumber().isSet();
+    final boolean number = OptionsManager.INSTANCE.getNumber().isSet();
+
+    final boolean showBuiltinEditorLineNumbers = shouldShowBuiltinLineNumbers(editor, number, relativeNumber);
 
     final EditorSettings settings = editor.getSettings();
-    final boolean showEditorLineNumbers = (EditorData.isLineNumbersShown(editor) || lineNumber) && !relativeLineNumber;
-
-    if (settings.isLineNumbersShown() ^ showEditorLineNumbers) {
+    if (settings.isLineNumbersShown() ^ showBuiltinEditorLineNumbers) {
       // Update line numbers later since it may be called from a caret listener
       // on the caret move and it may move the caret internally
       ApplicationManager.getApplication().invokeLater(() -> {
         if (editor.isDisposed()) return;
-        settings.setLineNumbersShown(showEditorLineNumbers);
+        setBuiltinLineNumbers(editor, showBuiltinEditorLineNumbers);
       });
     }
 
-    if (relativeLineNumber) {
+    if (relativeNumber) {
+      if (!hasRelativeLineNumbersInstalled(editor)) {
+        installRelativeLineNumbers(editor);
+      }
+      else if (requiresRepaint) {
+        repaintRelativeLineNumbers(editor);
+      }
+    }
+    else if (hasRelativeLineNumbersInstalled(editor)) {
+      removeRelativeLineNumbers(editor);
+    }
+  }
+
+  private static boolean shouldShowBuiltinLineNumbers(@NotNull final Editor editor, boolean number, boolean relativeNumber) {
+    final boolean initialState = UserDataManager.getVimLineNumbersInitialState(editor);
+
+    // Builtin relative line numbers requires EditorGutterComponentEx#setLineNumberConvertor. If we don't have that,
+    // fall back to the text annotation provider, which replaces the builtin line numbers
+    // AFAICT, this will always be true, but I can't guarantee it
+    if (editor.getGutter() instanceof EditorGutterComponentEx) {
+      return initialState || number || relativeNumber;
+    }
+
+    return (initialState || number) && !relativeNumber;
+  }
+
+  private static void setBuiltinLineNumbers(@NotNull final Editor editor, boolean show) {
+    editor.getSettings().setLineNumbersShown(show);
+  }
+
+  private static boolean hasRelativeLineNumbersInstalled(@NotNull final Editor editor) {
+    return UserDataManager.getVimHasRelativeLineNumbersInstalled(editor);
+  }
+
+  private static void installRelativeLineNumbers(@NotNull final Editor editor) {
+    if (!hasRelativeLineNumbersInstalled(editor)) {
       final EditorGutter gutter = editor.getGutter();
-      gutter.closeAllAnnotations();
-      gutter.registerTextAnnotation(myLineNumbersGutterProvider);
+      if (gutter instanceof EditorGutterComponentEx) {
+        ((EditorGutterComponentEx) gutter).setLineNumberConvertor(new RelativeLineNumberConverter(editor));
+      }
+      else {
+        gutter.registerTextAnnotation(new RelativeLineNumberGutterProvider(editor));
+      }
+      UserDataManager.setVimHasRelativeLineNumbersInstalled(editor, true);
+    }
+  }
+
+  private static void removeRelativeLineNumbers(@NotNull final Editor editor) {
+    if (hasRelativeLineNumbersInstalled(editor)) {
+      final EditorGutter gutter = editor.getGutter();
+      if (gutter instanceof EditorGutterComponentEx) {
+        ((EditorGutterComponentEx) gutter).setLineNumberConvertor(null);
+      }
+      else {
+        // TODO:[VERSION UPDATE] 192 gives us an API to close just one annotation provider
+        gutter.closeAllAnnotations();
+      }
+      UserDataManager.setVimHasRelativeLineNumbersInstalled(editor, false);
+    }
+  }
+
+  private static void repaintRelativeLineNumbers(@NotNull final Editor editor) {
+    final EditorGutter gutter = editor.getGutter();
+    final EditorGutterComponentEx gutterComponent = gutter instanceof EditorGutterComponentEx ? (EditorGutterComponentEx) gutter : null;
+    if (gutterComponent != null) {
+      gutterComponent.repaint();
     }
   }
 
@@ -210,9 +234,10 @@ public class EditorGroup {
   }
 
   public void saveData(@NotNull Element element) {
+    final Element editor = new Element("editor");
+    element.addContent(editor);
+
     if (isKeyRepeat != null) {
-      final Element editor = new Element("editor");
-      element.addContent(editor);
       final Element keyRepeat = new Element("key-repeat");
       keyRepeat.setAttribute("enabled", Boolean.toString(isKeyRepeat));
       editor.addContent(keyRepeat);
@@ -241,30 +266,119 @@ public class EditorGroup {
     this.isKeyRepeat = value;
   }
 
-  private static class LineNumbersGutterProvider implements TextAnnotationGutterProvider {
+  public void closeEditorSearchSession(@NotNull Editor editor) {
+    final EditorSearchSession editorSearchSession = EditorSearchSession.get(editor);
+    if (editorSearchSession != null) {
+      editorSearchSession.close();
+    }
+  }
+
+  public void editorCreated(@NotNull EditorFactoryEvent event) {
+    final Editor editor = event.getEditor();
+    isBlockCursor = editor.getSettings().isBlockCursor();
+    isAnimatedScrolling = editor.getSettings().isAnimatedScrolling();
+    isRefrainFromScrolling = editor.getSettings().isRefrainFromScrolling();
+    DocumentManager.getInstance().addListeners(editor.getDocument());
+    VimPlugin.getKey().registerRequiredShortcutKeys(editor);
+
+    initLineNumbers(editor);
+    // Turn on insert mode if editor doesn't have any file
+    if (!EditorHelper.isFileEditor(editor) &&
+        editor.getDocument().isWritable() &&
+        !CommandStateHelper.inInsertMode(editor)) {
+      VimPlugin.getChange().insertBeforeCursor(editor, new EditorDataContext(editor));
+      KeyHandler.getInstance().reset(editor);
+    }
+    editor.getSettings().setBlockCursor(!CommandStateHelper.inInsertMode(editor));
+    editor.getSettings().setAnimatedScrolling(ANIMATED_SCROLLING_VIM_VALUE);
+    editor.getSettings().setRefrainFromScrolling(REFRAIN_FROM_SCROLLING_VIM_VALUE);
+  }
+
+  public void editorReleased(@NotNull EditorFactoryEvent event) {
+    final Editor editor = event.getEditor();
+    deinitLineNumbers(editor, true);
+    UserDataManager.unInitializeEditor(editor);
+    VimPlugin.getKey().unregisterShortcutKeys(editor);
+    editor.getSettings().setAnimatedScrolling(isAnimatedScrolling);
+    editor.getSettings().setRefrainFromScrolling(isRefrainFromScrolling);
+    DocumentManager.getInstance().removeListeners(editor.getDocument());
+  }
+
+  public void notifyIdeaJoin(@Nullable Project project) {
+    if (VimPlugin.getVimState().isIdeaJoinNotified() || OptionsManager.INSTANCE.getIdeajoin().isSet()) return;
+
+    VimPlugin.getVimState().setIdeaJoinNotified(true);
+    VimPlugin.getNotifications(project).notifyAboutIdeaJoin();
+  }
+
+  public static class NumberChangeListener implements OptionChangeListener {
+    public static NumberChangeListener INSTANCE = new NumberChangeListener();
+
+    @Contract(pure = true)
+    private NumberChangeListener() {
+    }
+
+    @Override
+    public void valueChange(OptionChangeEvent event) {
+      for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
+        if (UserDataManager.getVimEditorGroup(editor) && supportsVimLineNumbers(editor)) {
+          updateLineNumbers(editor, true);
+        }
+      }
+    }
+  }
+
+  private static class RelativeLineNumberConverter implements TIntFunction {
+    @NotNull
+    private final Editor editor;
+
+    @Contract(pure = true)
+    RelativeLineNumberConverter(@NotNull final Editor editor) {
+      this.editor = editor;
+    }
+
+    @Override
+    public int execute(int line) {
+      final boolean number = OptionsManager.INSTANCE.getNumber().isSet();
+      final int caretLine = editor.getCaretModel().getLogicalPosition().line;
+
+      if (number && line == caretLine) {
+        return line;
+      }
+      else {
+        return getRelativeLineNumber(line, editor, caretLine);
+      }
+    }
+
+    private int getRelativeLineNumber(int line, @NotNull Editor editor, int caretLine) {
+      final int visualLine = EditorHelper.logicalLineToVisualLine(editor, line);
+      final int currentVisualLine = EditorHelper.logicalLineToVisualLine(editor, caretLine);
+      return Math.abs(currentVisualLine - visualLine) - 1;
+    }
+  }
+
+  private static class RelativeLineNumberGutterProvider implements TextAnnotationGutterProvider {
+    @NotNull
+    private final Editor editor;
+
+    @Contract(pure = true)
+    RelativeLineNumberGutterProvider(@NotNull final Editor editor) {
+      this.editor = editor;
+    }
+
     @Nullable
     @Override
     public String getLineText(int line, @NotNull Editor editor) {
-      if (VimPlugin.isEnabled() && EditorData.isFileEditor(editor)) {
-        final Options options = Options.getInstance();
-        final boolean relativeLineNumber = options.isSet(Options.RELATIVE_NUMBER);
-        final boolean lineNumber = options.isSet(Options.NUMBER);
-        if (relativeLineNumber && lineNumber && isCaretLine(line, editor)) {
-          return lineNumberToString(getLineNumber(line), editor);
-        }
-        else if (relativeLineNumber) {
-          return lineNumberToString(getRelativeLineNumber(line, editor), editor);
-        }
+      final boolean number = OptionsManager.INSTANCE.getNumber().isSet();
+      if (number && isCaretLine(line, editor)) {
+        return lineNumberToString(line + 1, editor, true);
+      } else {
+        return lineNumberToString(getRelativeLineNumber(line, editor), editor, false);
       }
-      return null;
     }
 
     private boolean isCaretLine(int line, @NotNull Editor editor) {
       return line == editor.getCaretModel().getLogicalPosition().line;
-    }
-
-    private int getLineNumber(int line) {
-      return line + 1;
     }
 
     private int getRelativeLineNumber(int line, @NotNull Editor editor) {
@@ -274,10 +388,12 @@ public class EditorGroup {
       return Math.abs(currentVisualLine - visualLine);
     }
 
-    private String lineNumberToString(int lineNumber, @NotNull Editor editor) {
+    private String lineNumberToString(int lineNumber, @NotNull Editor editor, boolean leftJustify) {
       final int lineCount = editor.getDocument().getLineCount();
-      final int digitsCount = (int)Math.ceil(Math.log10(lineCount));
-      return StringHelper.leftJustify("" + lineNumber, digitsCount, ' ');
+      final int digitsCount = lineCount == 0 ? 1 : (int)Math.ceil(Math.log10(lineCount));
+      return leftJustify
+        ? StringsKt.padEnd(Integer.toString(lineNumber), digitsCount, ' ')
+        : StringsKt.padStart(Integer.toString(lineNumber), digitsCount, ' ');
     }
 
     @Nullable
@@ -288,13 +404,13 @@ public class EditorGroup {
 
     @Override
     public EditorFontType getStyle(int line, Editor editor) {
-      return null;
+      return isCaretLine(line, editor) ? EditorFontType.BOLD: null;
     }
 
     @Nullable
     @Override
     public ColorKey getColor(int line, Editor editor) {
-      return EditorColors.LINE_NUMBERS_COLOR;
+      return isCaretLine(line, editor) ? EditorColors.LINE_NUMBER_ON_CARET_ROW_COLOR : EditorColors.LINE_NUMBERS_COLOR;
     }
 
     @Nullable
@@ -310,6 +426,7 @@ public class EditorGroup {
 
     @Override
     public void gutterClosed() {
+      UserDataManager.setVimHasRelativeLineNumbersInstalled(this.editor, false);
     }
   }
 }

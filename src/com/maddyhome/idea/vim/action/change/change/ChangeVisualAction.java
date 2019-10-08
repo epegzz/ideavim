@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.change.change;
@@ -22,57 +22,56 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
 import com.maddyhome.idea.vim.VimPlugin;
-import com.maddyhome.idea.vim.action.VimCommandAction;
 import com.maddyhome.idea.vim.command.Command;
+import com.maddyhome.idea.vim.command.CommandFlags;
 import com.maddyhome.idea.vim.command.MappingMode;
-import com.maddyhome.idea.vim.command.SelectionType;
-import com.maddyhome.idea.vim.common.TextRange;
-import com.maddyhome.idea.vim.handler.CaretOrder;
+import com.maddyhome.idea.vim.group.visual.VimSelection;
 import com.maddyhome.idea.vim.handler.VisualOperatorActionHandler;
-import com.maddyhome.idea.vim.helper.EditorData;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * @author vlan
  */
-public class ChangeVisualAction extends VimCommandAction {
-  public ChangeVisualAction() {
-    super(new VisualOperatorActionHandler(true, CaretOrder.DECREASING_OFFSET) {
-      @Override
-      protected boolean execute(@NotNull Editor editor, @NotNull Caret caret, @NotNull DataContext context,
-                                @NotNull Command cmd, @NotNull TextRange range) {
-        final SelectionType type = EditorData.wasVisualBlockMode(editor) && range.isMultiple()
-                                   ? SelectionType.BLOCK_WISE
-                                   : SelectionType.CHARACTER_WISE;
-        return VimPlugin.getChange().changeRange(editor, caret, range, type);
-      }
-    });
+final public class ChangeVisualAction extends VisualOperatorActionHandler.ForEachCaret {
+  @Contract(pure = true)
+  @NotNull
+  @Override
+  final public Set<MappingMode> getMappingModes() {
+    return MappingMode.X;
   }
 
   @NotNull
   @Override
-  public Set<MappingMode> getMappingModes() {
-    return MappingMode.V;
-  }
-
-  @NotNull
-  @Override
-  public Set<List<KeyStroke>> getKeyStrokesSet() {
+  final public Set<List<KeyStroke>> getKeyStrokesSet() {
     return parseKeysSet("c", "s");
   }
 
+  @Contract(pure = true)
   @NotNull
   @Override
-  public Command.Type getType() {
+  final public Command.Type getType() {
     return Command.Type.CHANGE;
   }
 
+  @NotNull
   @Override
-  public int getFlags() {
-    return Command.FLAG_MULTIKEY_UNDO | Command.FLAG_EXIT_VISUAL;
+  final public EnumSet<CommandFlags> getFlags() {
+    return EnumSet.of(CommandFlags.FLAG_MULTIKEY_UNDO, CommandFlags.FLAG_EXIT_VISUAL);
+  }
+
+  @Override
+  public boolean executeAction(@NotNull Editor editor,
+                               @NotNull Caret caret,
+                               @NotNull DataContext context,
+                               @NotNull Command cmd,
+                               @NotNull VimSelection range) {
+
+    return VimPlugin.getChange().changeRange(editor, caret, range.toVimTextRange(false), range.getType(), context);
   }
 }

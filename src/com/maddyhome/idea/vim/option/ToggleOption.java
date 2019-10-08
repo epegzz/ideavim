@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.option;
@@ -31,7 +31,7 @@ public class ToggleOption extends Option {
    * @param abbrev The short name
    * @param dflt   The default value
    */
-  ToggleOption(String name, String abbrev, boolean dflt) {
+  public ToggleOption(String name, String abbrev, boolean dflt) {
     super(name, abbrev);
 
     this.dflt = dflt;
@@ -66,6 +66,10 @@ public class ToggleOption extends Option {
    */
   public void toggle() {
     update(!value);
+  }
+
+  public boolean isSet() {
+    return value;
   }
 
   /**
@@ -106,6 +110,7 @@ public class ToggleOption extends Option {
    *
    * @return True if equal to default, false if not.
    */
+  @Override
   public boolean isDefault() {
     return value == dflt;
   }
@@ -113,6 +118,7 @@ public class ToggleOption extends Option {
   /**
    * Sets the option to its default value.
    */
+  @Override
   public void resetDefault() {
     value = dflt;
   }

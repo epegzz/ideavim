@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.change.delete;
@@ -22,65 +22,66 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
 import com.maddyhome.idea.vim.VimPlugin;
-import com.maddyhome.idea.vim.action.VimCommandAction;
-import com.maddyhome.idea.vim.command.Command;
-import com.maddyhome.idea.vim.command.CommandState;
-import com.maddyhome.idea.vim.command.MappingMode;
-import com.maddyhome.idea.vim.command.SelectionType;
+import com.maddyhome.idea.vim.command.*;
 import com.maddyhome.idea.vim.common.TextRange;
-import com.maddyhome.idea.vim.handler.CaretOrder;
+import com.maddyhome.idea.vim.group.visual.VimSelection;
 import com.maddyhome.idea.vim.handler.VisualOperatorActionHandler;
 import com.maddyhome.idea.vim.helper.EditorHelper;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * @author vlan
  */
-public class DeleteVisualLinesAction extends VimCommandAction {
-  public DeleteVisualLinesAction() {
-    super(new VisualOperatorActionHandler(true, CaretOrder.DECREASING_OFFSET) {
-      @Override
-      protected boolean execute(@NotNull Editor editor, @NotNull Caret caret, @NotNull DataContext context,
-                                @NotNull Command cmd, @NotNull TextRange range) {
-        final CommandState.SubMode mode = CommandState.getInstance(editor).getSubMode();
-        if (mode == CommandState.SubMode.VISUAL_BLOCK) {
-          return VimPlugin.getChange()
-            .deleteRange(editor, editor.getCaretModel().getPrimaryCaret(), range, SelectionType.fromSubMode(mode),
-                         false);
-        }
-        else {
-          final TextRange lineRange = new TextRange(EditorHelper.getLineStartForOffset(editor, range.getStartOffset()),
-                                                    EditorHelper.getLineEndForOffset(editor, range.getEndOffset()) + 1);
-          return VimPlugin.getChange().deleteRange(editor, caret, lineRange, SelectionType.LINE_WISE, false);
-        }
-      }
-    });
+final public class DeleteVisualLinesAction extends VisualOperatorActionHandler.ForEachCaret {
+  @Contract(pure = true)
+  @NotNull
+  @Override
+  final public Set<MappingMode> getMappingModes() {
+    return MappingMode.X;
   }
 
   @NotNull
   @Override
-  public Set<MappingMode> getMappingModes() {
-    return MappingMode.V;
-  }
-
-  @NotNull
-  @Override
-  public Set<List<KeyStroke>> getKeyStrokesSet() {
+  final public Set<List<KeyStroke>> getKeyStrokesSet() {
     return parseKeysSet("X");
   }
 
+  @Contract(pure = true)
   @NotNull
   @Override
-  public Command.Type getType() {
+  final public Command.Type getType() {
     return Command.Type.DELETE;
   }
 
+  @NotNull
   @Override
-  public int getFlags() {
-    return Command.FLAG_MOT_LINEWISE | Command.FLAG_EXIT_VISUAL;
+  final public EnumSet<CommandFlags> getFlags() {
+    return EnumSet.of(CommandFlags.FLAG_MOT_LINEWISE, CommandFlags.FLAG_EXIT_VISUAL);
+  }
+
+  @Override
+  public boolean executeAction(@NotNull Editor editor,
+                               @NotNull Caret caret,
+                               @NotNull DataContext context,
+                               @NotNull Command cmd,
+                               @NotNull VimSelection range) {
+    final CommandState.SubMode mode = CommandState.getInstance(editor).getSubMode();
+    final TextRange textRange = range.toVimTextRange(false);
+    if (mode == CommandState.SubMode.VISUAL_BLOCK) {
+      return VimPlugin.getChange()
+        .deleteRange(editor, editor.getCaretModel().getPrimaryCaret(), textRange, SelectionType.fromSubMode(mode),
+                     false);
+    }
+    else {
+      final TextRange lineRange = new TextRange(EditorHelper.getLineStartForOffset(editor, textRange.getStartOffset()),
+                                                EditorHelper.getLineEndForOffset(editor, textRange.getEndOffset()) + 1);
+      return VimPlugin.getChange().deleteRange(editor, caret, lineRange, SelectionType.LINE_WISE, false);
+    }
   }
 }

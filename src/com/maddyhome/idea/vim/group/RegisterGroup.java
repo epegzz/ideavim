@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,17 +13,26 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.group;
 
 import com.google.common.collect.ImmutableList;
-import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.codeInsight.editorActions.CopyPastePostProcessor;
+import com.intellij.codeInsight.editorActions.CopyPastePreProcessor;
+import com.intellij.codeInsight.editorActions.TextBlockTransferable;
+import com.intellij.codeInsight.editorActions.TextBlockTransferableData;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.CaretStateTransferableData;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.openapi.editor.richcopy.view.HtmlTransferableData;
+import com.intellij.openapi.editor.richcopy.view.RtfTransferableData;
+import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.IndexNotReadyException;
+import com.intellij.openapi.project.Project;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiFile;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.action.motion.mark.MotionGotoFileMarkAction;
 import com.maddyhome.idea.vim.action.motion.search.SearchAgainNextAction;
@@ -41,11 +50,13 @@ import com.maddyhome.idea.vim.command.CommandState;
 import com.maddyhome.idea.vim.command.SelectionType;
 import com.maddyhome.idea.vim.common.Register;
 import com.maddyhome.idea.vim.common.TextRange;
+import com.maddyhome.idea.vim.handler.EditorActionHandlerBase;
 import com.maddyhome.idea.vim.helper.EditorHelper;
 import com.maddyhome.idea.vim.helper.StringHelper;
 import com.maddyhome.idea.vim.option.ListOption;
-import com.maddyhome.idea.vim.option.Options;
+import com.maddyhome.idea.vim.option.OptionsManager;
 import com.maddyhome.idea.vim.ui.ClipboardHandler;
+import kotlin.Pair;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -53,9 +64,10 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * This group works with command associated with copying and pasting text
@@ -76,7 +88,7 @@ public class RegisterGroup {
   @Nullable private List<KeyStroke> recordList = null;
 
   public RegisterGroup() {
-    final ListOption clipboardOption = Options.getInstance().getListOption(Options.CLIPBOARD);
+    final ListOption clipboardOption = OptionsManager.INSTANCE.getClipboard();
     if (clipboardOption != null) {
       clipboardOption.addOptionChangeListener(event -> {
         if (clipboardOption.contains("unnamed")) {
@@ -123,7 +135,11 @@ public class RegisterGroup {
    */
   public void resetRegister() {
     lastRegister = defaultRegister;
-    logger.debug("register reset");
+    logger.debug("Last register reset to default register");
+  }
+
+  public void resetRegisters() {
+    registers.clear();
   }
 
   /**
@@ -160,37 +176,41 @@ public class RegisterGroup {
       end = t;
     }
 
-    if (type == SelectionType.LINE_WISE && text.length() > 0 && text.charAt(text.length() - 1) != '\n') {
-      text = text + '\n';
-    }
-
     // If this is an uppercase register, we need to append the text to the corresponding lowercase register
+    final List<TextBlockTransferableData> transferableData = start != -1 ? getTransferableData(editor, range, text) : new ArrayList<>();
+    final String processedText = start != -1 ? preprocessText(editor, range, text, transferableData) : text;
+    if (logger.isDebugEnabled()) {
+      final String transferableClasses =
+        transferableData.stream().map(it -> it.getClass().getName()).collect(Collectors.joining(","));
+      logger.debug("Copy to '" + lastRegister + "' with transferable data: " + transferableClasses);
+    }
     if (Character.isUpperCase(register)) {
       char lreg = Character.toLowerCase(register);
       Register r = registers.get(lreg);
       // Append the text if the lowercase register existed
       if (r != null) {
-        r.addText(text);
+        r.addTextAndResetTransferableData(processedText);
       }
       // Set the text if the lowercase register didn't exist yet
       else {
-        registers.put(lreg, new Register(lreg, type, text));
-        if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + text + "\"");
+        registers.put(lreg, new Register(lreg, type, processedText, new ArrayList<>(transferableData)));
+        if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + processedText + "\"");
       }
-    }
-    else if (CLIPBOARD_REGISTERS.contains(register)) {
-      ClipboardHandler.setClipboardText(text);
     }
     // Put the text in the specified register
     else {
-      registers.put(register, new Register(register, type, text));
-      if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + text + "\"");
+      registers.put(register, new Register(register, type, processedText, new ArrayList<>(transferableData)));
+      if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + processedText + "\"");
+    }
+
+    if (CLIPBOARD_REGISTERS.contains(register)) {
+      ClipboardHandler.setClipboardText(processedText, new ArrayList<>(transferableData), text);
     }
 
     // Also add it to the default register if the default wasn't specified
     if (register != defaultRegister && ".:/".indexOf(register) == -1) {
-      registers.put(defaultRegister, new Register(defaultRegister, type, text));
-      if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + text + "\"");
+      registers.put(defaultRegister, new Register(defaultRegister, type, processedText, new ArrayList<>(transferableData)));
+      if (logger.isDebugEnabled()) logger.debug("register '" + register + "' contains: \"" + processedText + "\"");
     }
 
     if (isDelete) {
@@ -207,18 +227,18 @@ public class RegisterGroup {
             registers.put((char)(d + 1), t);
           }
         }
-        registers.put('1', new Register('1', type, text));
+        registers.put('1', new Register('1', type, processedText, new ArrayList<>(transferableData)));
       }
 
       // Deletes smaller than one line and without specified register go the the "-" register
       if (smallInlineDeletion && register == defaultRegister) {
-        registers.put('-', new Register('-', type, text));
+        registers.put('-', new Register('-', type, processedText, new ArrayList<>(transferableData)));
       }
     }
     // Yanks also go to register 0 if the default register was used
     else if (register == defaultRegister) {
-      registers.put('0', new Register('0', type, text));
-      if (logger.isDebugEnabled()) logger.debug("register '" + '0' + "' contains: \"" + text + "\"");
+      registers.put('0', new Register('0', type, processedText, new ArrayList<>(transferableData)));
+      if (logger.isDebugEnabled()) logger.debug("register '" + '0' + "' contains: \"" + processedText + "\"");
     }
 
     if (start != -1) {
@@ -228,20 +248,65 @@ public class RegisterGroup {
     return true;
   }
 
+  @NotNull
+  public List<TextBlockTransferableData> getTransferableData(@NotNull Editor editor,
+                                                              @NotNull TextRange textRange,
+                                                              String text) {
+    final List<TextBlockTransferableData> transferableDatas = new ArrayList<>();
+    final Project project = editor.getProject();
+    if (project == null) return new ArrayList<>();
+
+    final PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+    if (file == null) return new ArrayList<>();
+    DumbService.getInstance(project).withAlternativeResolveEnabled(() -> {
+      for (CopyPastePostProcessor<? extends TextBlockTransferableData> processor : CopyPastePostProcessor.EP_NAME
+        .getExtensionList()) {
+        try {
+          transferableDatas.addAll(processor.collectTransferableData(file, editor, textRange.getStartOffsets(), textRange.getEndOffsets()));
+        }
+        catch (IndexNotReadyException ignore) {
+        }
+      }
+    });
+    transferableDatas.add(new CaretStateTransferableData(new int[]{0}, new int[]{text.length()}));
+
+    // These data provided by {@link com.intellij.openapi.editor.richcopy.TextWithMarkupProcessor} doesn't work with
+    //   IdeaVim and I don't see a way to fix it
+    // See https://youtrack.jetbrains.com/issue/VIM-1785
+    // See https://youtrack.jetbrains.com/issue/VIM-1731
+    transferableDatas.removeIf(it -> (it instanceof RtfTransferableData) || (it instanceof HtmlTransferableData));
+    return transferableDatas;
+  }
+
+  private String preprocessText(@NotNull Editor editor, @NotNull TextRange textRange, String text, List<TextBlockTransferableData> transferableDatas) {
+    final Project project = editor.getProject();
+    if (project == null) return text;
+
+    final PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+    if (file == null) return text;
+    String rawText = TextBlockTransferable.convertLineSeparators(text, "\n", transferableDatas);
+    String escapedText;
+    for (CopyPastePreProcessor processor : CopyPastePreProcessor.EP_NAME.getExtensionList()) {
+      escapedText = processor.preprocessOnCopy(file, textRange.getStartOffsets(), textRange.getEndOffsets(), rawText);
+      if (escapedText != null) {
+        return escapedText;
+      }
+    }
+    return text;
+  }
+
   private boolean isSmallDeletionSpecialCase(Editor editor) {
     Command currentCommand = CommandState.getInstance(editor).getCommand();
     if (currentCommand != null) {
       Argument argument = currentCommand.getArgument();
       if (argument != null) {
         Command motionCommand = argument.getMotion();
-        if (motionCommand != null) {
-          AnAction action = motionCommand.getAction();
-          return action instanceof MotionPercentOrMatchAction || action instanceof MotionSentencePreviousStartAction
-            || action instanceof MotionSentenceNextStartAction || action instanceof MotionGotoFileMarkAction
-            || action instanceof SearchEntryFwdAction || action instanceof SearchEntryRevAction
-            || action instanceof SearchAgainNextAction || action instanceof SearchAgainPreviousAction
-            || action instanceof MotionParagraphNextAction || action instanceof MotionParagraphPreviousAction;
-        }
+        EditorActionHandlerBase action = motionCommand.getAction();
+        return action instanceof MotionPercentOrMatchAction || action instanceof MotionSentencePreviousStartAction
+          || action instanceof MotionSentenceNextStartAction || action instanceof MotionGotoFileMarkAction
+          || action instanceof SearchEntryFwdAction || action instanceof SearchEntryRevAction
+          || action instanceof SearchAgainNextAction || action instanceof SearchAgainPreviousAction
+          || action instanceof MotionParagraphNextAction || action instanceof MotionParagraphPreviousAction;
       }
     }
 
@@ -302,7 +367,7 @@ public class RegisterGroup {
         res.add(register);
       }
     }
-    res.sort(new Register.KeySorter<>());
+    res.sort(new Register.KeySorter());
     return res;
   }
 
@@ -392,7 +457,6 @@ public class RegisterGroup {
     logger.debug("readData");
     final Element registersElement = element.getChild("registers");
     if (registersElement != null) {
-      //noinspection unchecked
       final List<Element> registerElements = registersElement.getChildren("register");
       for (Element registerElement : registerElements) {
         final char key = registerElement.getAttributeValue("name").charAt(0);
@@ -403,7 +467,7 @@ public class RegisterGroup {
         if (textElement != null) {
           final String text = StringHelper.getSafeXmlText(textElement);
           if (text != null) {
-            register = new Register(key, type, text);
+            register = new Register(key, type, text, Collections.emptyList());
           }
           else {
             register = null;
@@ -411,7 +475,6 @@ public class RegisterGroup {
         }
         else {
           final Element keysElement = registerElement.getChild("keys");
-          //noinspection unchecked
           final List<Element> keyElements = keysElement.getChildren("key");
           final List<KeyStroke> strokes = new ArrayList<>();
           for (Element keyElement : keyElements) {
@@ -432,21 +495,22 @@ public class RegisterGroup {
 
   @Nullable
   private Register refreshClipboardRegister(char r) {
-    final String text = ClipboardHandler.getClipboardText();
+    final Pair<String, List<TextBlockTransferableData>> clipboardData = ClipboardHandler.getClipboardTextAndTransferableData();
+    final Register currentRegister = registers.get(r);
+    final String text = clipboardData.getFirst();
+    final List<TextBlockTransferableData> transferableData = clipboardData.getSecond();
     if (text != null) {
-      return new Register(r, guessSelectionType(text), text);
+      if (currentRegister != null && text.equals(currentRegister.getText())) {
+        return currentRegister;
+      }
+      return new Register(r, guessSelectionType(text), text, transferableData);
     }
     return null;
   }
 
   @NotNull
   private SelectionType guessSelectionType(@NotNull String text) {
-    final String[] lines = StringUtil.splitByLines(text);
-    final HashSet<Integer> lengths = new HashSet<>(ContainerUtil.map(lines, String::length));
-    if (lines.length > 1 && lengths.size() == 1) {
-      return SelectionType.BLOCK_WISE;
-    }
-    else if (text.endsWith("\n")) {
+    if (text.endsWith("\n")) {
       return SelectionType.LINE_WISE;
     }
     else {

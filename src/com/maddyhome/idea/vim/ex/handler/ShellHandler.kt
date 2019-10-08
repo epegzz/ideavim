@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 package com.maddyhome.idea.vim.ex.handler
 
@@ -28,10 +28,9 @@ import com.maddyhome.idea.vim.ex.flags
 /**
  * @author John Grib
  */
-class ShellHandler : CommandHandler(
-        commands { +"sh" withOptional "ell" },
-        flags(CommandHandler.RANGE_FORBIDDEN, CommandHandler.ARGUMENT_FORBIDDEN)
-) {
-    override fun execute(editor: Editor, context: DataContext, cmd: ExCommand) =
-            KeyHandler.executeAction("ActivateTerminalToolWindow", context)
+class ShellHandler : CommandHandler.SingleExecution() {
+  override val names = commands("sh[ell]")
+  override val argFlags = flags(RangeFlag.RANGE_FORBIDDEN, ArgumentFlag.ARGUMENT_FORBIDDEN, Access.READ_ONLY)
+  override fun execute(editor: Editor, context: DataContext, cmd: ExCommand) =
+    KeyHandler.executeAction("ActivateTerminalToolWindow", context)
 }

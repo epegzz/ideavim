@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.helper;
@@ -95,43 +95,21 @@ public class StringHelper {
 
   private StringHelper() {}
 
-  /**
-   * @deprecated please use String.padEnd function of kotlin
-   */
-  @Deprecated
-  @NotNull
-  public static String leftJustify(@NotNull String text, int width, char fillChar) {
-    final StringBuilder builder = new StringBuilder(text);
-    for (int i = text.length(); i < width; i++) {
-      builder.append(fillChar);
-    }
-    return builder.toString();
-  }
-
-  @NotNull
-  public static String rightJustify(@NotNull String text, int width, char fillChar) {
-    final StringBuilder builder = new StringBuilder(text);
-    for (int i = text.length(); i < width; i++) {
-      builder.insert(0, fillChar);
-    }
-    return builder.toString();
-  }
-
   @Nullable
   private static String toEscapeNotation(@NotNull KeyStroke key) {
     final char c = key.getKeyChar();
     if (isControlCharacter(c)) {
-      return "^" + String.valueOf((char)(c + 'A' - 1));
+      return "^" + (char)(c + 'A' - 1);
     }
     else if (isControlKeyCode(key)) {
-      return "^" + String.valueOf((char)(key.getKeyCode() + 'A' - 1));
+      return "^" + (char)(key.getKeyCode() + 'A' - 1);
     }
     return null;
   }
 
   @NotNull
   public static List<KeyStroke> stringToKeys(@NotNull String s) {
-    final List<KeyStroke> res = new ArrayList<KeyStroke>();
+    final List<KeyStroke> res = new ArrayList<>();
     for (int i = 0; i < s.length(); i++) {
       res.add(getKeyStroke(s.charAt(i)));
     }
@@ -152,7 +130,7 @@ public class StringHelper {
    */
   @NotNull
   public static List<KeyStroke> parseKeys(@NotNull String... strings) {
-    final List<KeyStroke> result = new ArrayList<KeyStroke>();
+    final List<KeyStroke> result = new ArrayList<>();
     for (String s : strings) {
       KeyParserState state = KeyParserState.INIT;
       StringBuilder specialKeyBuilder = new StringBuilder();
@@ -384,7 +362,7 @@ public class StringHelper {
 
   @NotNull
   private static <K, V> Map<V, K> invertMap(@NotNull Map<K, V> map) {
-    final Map<V, K> inverted = new HashMap<V, K>();
+    final Map<V, K> inverted = new HashMap<>();
     for (Map.Entry<K, V> entry : map.entrySet()) {
       final V value = entry.getValue();
       if (!inverted.containsKey(value)) {

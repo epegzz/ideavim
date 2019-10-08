@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,12 +13,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.ex;
 
-import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
 import org.jetbrains.annotations.NotNull;
@@ -31,13 +30,12 @@ public interface Range {
    * Get the line number this range represents
    *
    * @param editor   The editor to get the line for
-   * @param context  The data context
    * @param lastZero True if the last line set represents before the start of the false
    * @return The zero based logical line in the editor that the range represents
    */
-  int getLine(Editor editor, DataContext context, boolean lastZero);
+  int getLine(Editor editor, boolean lastZero);
 
-  int getLine(@NotNull Editor editor, @NotNull Caret caret, @NotNull DataContext context, boolean lastZero);
+  int getLine(@NotNull Editor editor, @NotNull Caret caret, boolean lastZero);
 
   /**
    * Should the cursor be moved to this range's line?

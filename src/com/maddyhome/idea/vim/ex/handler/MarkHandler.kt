@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.ex.handler
@@ -29,23 +29,20 @@ import com.maddyhome.idea.vim.helper.EditorHelper
 import com.maddyhome.idea.vim.helper.MessageHelper
 import com.maddyhome.idea.vim.helper.Msg
 
-class MarkHandler : CommandHandler(
-        commands {
-            +"ma" withOptional "rk"
-            +"k"
-        },
-        flags(CommandHandler.RANGE_OPTIONAL, CommandHandler.ARGUMENT_REQUIRED)) {
+class MarkHandler : CommandHandler.SingleExecution() {
+  override val names = commands("ma[rk]", "k")
+  override val argFlags = flags(RangeFlag.RANGE_OPTIONAL, ArgumentFlag.ARGUMENT_REQUIRED, Access.READ_ONLY)
 
-    override fun execute(editor: Editor, context: DataContext, cmd: ExCommand): Boolean {
-        val mark = cmd.argument[0]
-        val line = cmd.getLine(editor, context)
-        val offset = EditorHelper.getLineStartOffset(editor, line)
+  override fun execute(editor: Editor, context: DataContext, cmd: ExCommand): Boolean {
+    val mark = cmd.argument[0]
+    val line = cmd.getLine(editor)
+    val offset = EditorHelper.getLineStartOffset(editor, line)
 
-        return if (mark.isLetter() || mark in "'`") {
-            VimPlugin.getMark().setMark(editor, mark, offset)
-        } else {
-            VimPlugin.showMessage(MessageHelper.message(Msg.E191))
-            false
-        }
+    return if (mark.isLetter() || mark in "'`") {
+      VimPlugin.getMark().setMark(editor, mark, offset)
+    } else {
+      VimPlugin.showMessage(MessageHelper.message(Msg.E191))
+      false
     }
+  }
 }

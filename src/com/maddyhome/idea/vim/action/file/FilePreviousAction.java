@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,31 +13,54 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.file;
 
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Command;
-import com.maddyhome.idea.vim.handler.EditorActionHandlerBase;
+import com.maddyhome.idea.vim.command.MappingMode;
+import com.maddyhome.idea.vim.handler.VimActionHandler;
 import org.jetbrains.annotations.NotNull;
 
-/**
- */
-public class FilePreviousAction extends EditorAction {
-  public FilePreviousAction() {
-    super(new FilePreviousHandler());
+import javax.swing.*;
+import java.awt.event.KeyEvent;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+
+public class FilePreviousAction extends VimActionHandler.SingleExecution {
+  @NotNull
+  @Override
+  public Set<MappingMode> getMappingModes() {
+    return MappingMode.N;
   }
 
-  private static class FilePreviousHandler extends EditorActionHandlerBase {
-    protected boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
-      VimPlugin.getFile().selectPreviousTab(context);
+  @NotNull
+  @Override
+  public Set<List<KeyStroke>> getKeyStrokesSet() {
+    Set<List<KeyStroke>> keys = new HashSet<>();
+    keys
+      .add(Collections.singletonList(KeyStroke.getKeyStroke(KeyEvent.VK_6, KeyEvent.CTRL_MASK | KeyEvent.SHIFT_MASK)));
+    keys.add(Collections.singletonList(KeyStroke.getKeyStroke(KeyEvent.VK_CIRCUMFLEX, KeyEvent.CTRL_MASK)));
+    return keys;
+  }
 
-      return true;
-    }
+  @NotNull
+  @Override
+  public Command.Type getType() {
+    return Command.Type.OTHER_READONLY;
+  }
+
+  @Override
+  public boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
+    VimPlugin.getFile().selectPreviousTab(context);
+
+    return true;
   }
 }

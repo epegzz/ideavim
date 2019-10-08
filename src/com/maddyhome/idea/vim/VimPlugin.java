@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,26 +13,23 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 package com.maddyhome.idea.vim;
 
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManager;
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.notification.*;
-import com.intellij.openapi.application.Application;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationDisplayType;
+import com.intellij.notification.NotificationListener;
+import com.intellij.notification.Notifications;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ApplicationComponent;
-import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.State;
-import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.application.PermanentInstallationID;
+import com.intellij.openapi.components.*;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.actionSystem.EditorActionManager;
-import com.intellij.openapi.editor.actionSystem.TypedAction;
-import com.intellij.openapi.editor.event.EditorFactoryAdapter;
-import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.ex.KeymapManagerEx;
@@ -40,9 +37,7 @@ import com.intellij.openapi.keymap.impl.DefaultKeymap;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerAdapter;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.updateSettings.impl.UpdateChecker;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vfs.CharsetToolkit;
@@ -51,10 +46,16 @@ import com.intellij.openapi.wm.WindowManager;
 import com.intellij.util.io.HttpRequests;
 import com.maddyhome.idea.vim.ex.CommandParser;
 import com.maddyhome.idea.vim.ex.vimscript.VimScriptParser;
+import com.maddyhome.idea.vim.extension.VimExtensionRegistrar;
 import com.maddyhome.idea.vim.group.*;
+import com.maddyhome.idea.vim.group.copy.PutGroup;
+import com.maddyhome.idea.vim.group.copy.YankGroup;
+import com.maddyhome.idea.vim.group.visual.VisualMotionGroup;
 import com.maddyhome.idea.vim.helper.DocumentManager;
 import com.maddyhome.idea.vim.helper.MacKeyRepeat;
-import com.maddyhome.idea.vim.option.Options;
+import com.maddyhome.idea.vim.listener.VimListenerManager;
+import com.maddyhome.idea.vim.option.OptionsManager;
+import com.maddyhome.idea.vim.ui.ExEntryPanel;
 import com.maddyhome.idea.vim.ui.VimEmulationConfigurable;
 import org.jdom.Element;
 import org.jdom.JDOMException;
@@ -67,6 +68,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * This plugin attempts to emulate the key binding and general functionality of Vim and gVim. See the supplied
@@ -75,20 +77,15 @@ import java.util.concurrent.TimeUnit;
  * <p/>
  * This is an application level plugin meaning that all open projects will share a common instance of the plugin.
  * Registers and marks are shared across open projects so you can copy and paste between files of different projects.
- *
- * @version 0.1
  */
-@State(
-  name = "VimSettings",
-  storages = {@Storage(file = "$APP_CONFIG$/vim_settings.xml")})
-public class VimPlugin implements ApplicationComponent, PersistentStateComponent<Element> {
+@State(name = "VimSettings", storages = {@Storage("$APP_CONFIG$/vim_settings.xml")})
+public class VimPlugin implements BaseComponent, PersistentStateComponent<Element>, Disposable {
   private static final String IDEAVIM_COMPONENT_NAME = "VimPlugin";
   private static final String IDEAVIM_PLUGIN_ID = "IdeaVIM";
   private static final String IDEAVIM_STATISTICS_TIMESTAMP_KEY = "ideavim.statistics.timestamp";
-  public static final String IDEAVIM_NOTIFICATION_ID = "ideavim";
-  public static final String IDEAVIM_STICKY_NOTIFICATION_ID = "ideavim-sticky";
-  public static final String IDEAVIM_NOTIFICATION_TITLE = "IdeaVim";
-  public static final int STATE_VERSION = 4;
+  public static final int STATE_VERSION = 5;
+
+  private static long lastBeepTimeMillis;
 
   private boolean error = false;
 
@@ -97,42 +94,9 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
 
   // It is enabled by default to avoid any special configuration after plugin installation
   private boolean enabled = true;
+  private boolean initialized = false;
 
   private static final Logger LOG = Logger.getInstance(VimPlugin.class);
-
-  @NotNull private final MotionGroup motion;
-  @NotNull private final ChangeGroup change;
-  @NotNull private final CopyGroup copy;
-  @NotNull private final MarkGroup mark;
-  @NotNull private final RegisterGroup register;
-  @NotNull private final FileGroup file;
-  @NotNull private final SearchGroup search;
-  @NotNull private final ProcessGroup process;
-  @NotNull private final MacroGroup macro;
-  @NotNull private final DigraphGroup digraph;
-  @NotNull private final HistoryGroup history;
-  @NotNull private final KeyGroup key;
-  @NotNull private final WindowGroup window;
-  @NotNull private final EditorGroup editor;
-
-  public VimPlugin() {
-    motion = new MotionGroup();
-    change = new ChangeGroup();
-    copy = new CopyGroup();
-    mark = new MarkGroup();
-    register = new RegisterGroup();
-    file = new FileGroup();
-    search = new SearchGroup();
-    process = new ProcessGroup();
-    macro = new MacroGroup();
-    digraph = new DigraphGroup();
-    history = new HistoryGroup();
-    key = new KeyGroup();
-    window = new WindowGroup();
-    editor = new EditorGroup();
-
-    LOG.debug("VimPlugin ctr");
-  }
 
   @NotNull
   @Override
@@ -140,46 +104,174 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
     return IDEAVIM_COMPONENT_NAME;
   }
 
+
+  @NotNull private final VimState state = new VimState();
+
   @Override
   public void initComponent() {
     LOG.debug("initComponent");
 
-    Notifications.Bus.register(IDEAVIM_STICKY_NOTIFICATION_ID, NotificationDisplayType.STICKY_BALLOON);
-
-    ApplicationManager.getApplication().invokeLater(new Runnable() {
-      public void run() {
-        updateState();
-      }
-    });
-
-    final TypedAction typedAction = EditorActionManager.getInstance().getTypedAction();
-    EventFacade.getInstance().setupTypedActionHandler(new VimTypedActionHandler(typedAction.getRawHandler()));
-
-    // Register vim actions in command mode
-    RegisterActions.registerActions();
-
-    // Add some listeners so we can handle special events
-    setupListeners();
-
-    // Register ex handlers
-    CommandParser.getInstance().registerHandlers();
-
-    if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      final File ideaVimRc = VimScriptParser.findIdeaVimRc();
-      if (ideaVimRc != null) {
-        VimScriptParser.executeFile(ideaVimRc);
-      }
-    }
+    if (isEnabled()) initializePlugin();
 
     LOG.debug("done");
   }
 
   @Override
-  public void disposeComponent() {
+  public void dispose() {
     LOG.debug("disposeComponent");
     turnOffPlugin();
-    EventFacade.getInstance().restoreTypedActionHandler();
     LOG.debug("done");
+  }
+
+  /**
+   * @return NotificationService as applicationService if project is null and projectService otherwise
+   */
+  @NotNull
+  public static NotificationService getNotifications(@Nullable Project project) {
+    if (project == null) {
+      return ServiceManager.getService(NotificationService.class);
+    } else {
+      return ServiceManager.getService(project, NotificationService.class);
+    }
+  }
+
+  @NotNull
+  public static VimState getVimState() {
+    return getInstance().state;
+  }
+
+
+  @NotNull
+  public static MotionGroup getMotion() {
+    return ServiceManager.getService(MotionGroup.class);
+  }
+
+  /**
+   * Reports statistics about installed IdeaVim and enabled Vim emulation.
+   * <p>
+   * See https://github.com/go-lang-plugin-org/go-lang-idea-plugin/commit/5182ab4a1d01ad37f6786268a2fe5e908575a217
+   */
+  public static void statisticReport() {
+    final PropertiesComponent propertiesComponent = PropertiesComponent.getInstance();
+    final long lastUpdate = propertiesComponent.getOrInitLong(IDEAVIM_STATISTICS_TIMESTAMP_KEY, 0);
+    final boolean outOfDate =
+      lastUpdate == 0 || System.currentTimeMillis() - lastUpdate > TimeUnit.DAYS.toMillis(1);
+    if (outOfDate && isEnabled()) {
+      ApplicationManager.getApplication().executeOnPooledThread(() -> {
+        try {
+          final String buildNumber = ApplicationInfo.getInstance().getBuild().asString();
+          final String version = URLEncoder.encode(getVersion(), CharsetToolkit.UTF8);
+          final String os =
+            URLEncoder.encode(SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION, CharsetToolkit.UTF8);
+          final String uid = PermanentInstallationID.get();
+          final String url = "https://plugins.jetbrains.com/plugins/list" +
+                             "?pluginId=" + IDEAVIM_PLUGIN_ID +
+                             "&build=" +
+                             buildNumber +
+                             "&pluginVersion=" +
+                             version +
+                             "&os=" +
+                             os +
+                             "&uuid=" +
+                             uid;
+          PropertiesComponent.getInstance()
+            .setValue(IDEAVIM_STATISTICS_TIMESTAMP_KEY, String.valueOf(System.currentTimeMillis()));
+          HttpRequests.request(url).connect(request -> {
+            LOG.info("Sending statistics: " + url);
+            try {
+              JDOMUtil.load(request.getInputStream());
+            }
+            catch (JDOMException e) {
+              LOG.warn(e);
+            }
+            return null;
+          });
+        }
+        catch (IOException e) {
+          LOG.warn(e);
+        }
+      });
+    }
+  }
+
+  @NotNull
+  public static ChangeGroup getChange() {
+    return ServiceManager.getService(ChangeGroup.class);
+  }
+
+  @NotNull
+  public static CommandGroup getCommand() {
+    return ServiceManager.getService(CommandGroup.class);
+  }
+
+  @NotNull
+  public static MarkGroup getMark() {
+    return ServiceManager.getService(MarkGroup.class);
+  }
+
+  @NotNull
+  public static RegisterGroup getRegister() {
+    return ServiceManager.getService(RegisterGroup.class);
+  }
+
+  @NotNull
+  public static FileGroup getFile() {
+    return ServiceManager.getService(FileGroup.class);
+  }
+
+  @NotNull
+  public static SearchGroup getSearch() {
+    return ServiceManager.getService(SearchGroup.class);
+  }
+
+  @NotNull
+  public static ProcessGroup getProcess() {
+    return ServiceManager.getService(ProcessGroup.class);
+  }
+
+  @NotNull
+  public static MacroGroup getMacro() {
+    return ServiceManager.getService(MacroGroup.class);
+  }
+
+  @NotNull
+  public static DigraphGroup getDigraph() {
+    return ServiceManager.getService(DigraphGroup.class);
+  }
+
+  @NotNull
+  public static HistoryGroup getHistory() {
+    return ServiceManager.getService(HistoryGroup.class);
+  }
+
+  @NotNull
+  public static KeyGroup getKey() {
+    return ServiceManager.getService(KeyGroup.class);
+  }
+
+  @NotNull
+  public static WindowGroup getWindow() {
+    return ServiceManager.getService(WindowGroup.class);
+  }
+
+  @NotNull
+  public static EditorGroup getEditor() {
+    return ServiceManager.getService(EditorGroup.class);
+  }
+
+  @NotNull
+  public static VisualMotionGroup getVisualMotion() {
+    return ServiceManager.getService(VisualMotionGroup.class);
+  }
+
+  @NotNull
+  public static YankGroup getYank() {
+    return ServiceManager.getService(YankGroup.class);
+  }
+
+  @NotNull
+  public static PutGroup getPut() {
+    return ServiceManager.getService(PutGroup.class);
   }
 
   @Override
@@ -193,108 +285,56 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
     state.setAttribute("enabled", Boolean.toString(enabled));
     element.addContent(state);
 
-    mark.saveData(element);
-    register.saveData(element);
-    search.saveData(element);
-    history.saveData(element);
-    key.saveData(element);
-    editor.saveData(element);
+    getKey().saveData(element);
+    getEditor().saveData(element);
 
     return element;
   }
 
-  @Override
-  public void loadState(@NotNull final Element element) {
-    LOG.debug("Loading state");
+  @NotNull
+  private static NotificationService getNotifications() {
+    return getNotifications(null);
+  }
 
-    // Restore whether the plugin is enabled or not
-    Element state = element.getChild("state");
-    if (state != null) {
-      try {
-        previousStateVersion = Integer.valueOf(state.getAttributeValue("version"));
+  private void initializePlugin() {
+    if (initialized) return;
+    initialized = true;
+
+    ApplicationManager.getApplication().invokeLater(this::updateState);
+
+    getEditor().turnOn();
+    getSearch().turnOn();
+    VimListenerManager.INSTANCE.turnOn();
+
+    // Add some listeners so we can handle special events
+    DocumentManager.getInstance().addDocumentListener(MarkGroup.MarkUpdater.INSTANCE);
+    DocumentManager.getInstance().addDocumentListener(SearchGroup.DocumentSearchListener.INSTANCE);
+
+    Runnable asyncSetup = () -> {
+      // Register vim actions in command mode
+      RegisterActions.registerActions();
+
+      // Register ex handlers
+      CommandParser.getInstance().registerHandlers();
+
+      // Register extensions
+      VimExtensionRegistrar.registerExtensions();
+
+      if (!ApplicationManager.getApplication().isUnitTestMode()) {
+        final File ideaVimRc = VimScriptParser.findIdeaVimRc();
+        if (ideaVimRc != null) {
+          VimScriptParser.executeFile(ideaVimRc);
+        }
       }
-      catch (NumberFormatException ignored) {
-      }
-      enabled = Boolean.valueOf(state.getAttributeValue("enabled"));
-      previousKeyMap = state.getAttributeValue("keymap");
+
+      Initialization.initialized();
+    };
+
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      asyncSetup.run();
+    } else {
+      ApplicationManager.getApplication().executeOnPooledThread(asyncSetup);
     }
-
-    mark.readData(element);
-    register.readData(element);
-    search.readData(element);
-    history.readData(element);
-    key.readData(element);
-    editor.readData(element);
-  }
-
-  @NotNull
-  public static MotionGroup getMotion() {
-    return getInstance().motion;
-  }
-
-  @NotNull
-  public static ChangeGroup getChange() {
-    return getInstance().change;
-  }
-
-  @NotNull
-  public static CopyGroup getCopy() {
-    return getInstance().copy;
-  }
-
-  @NotNull
-  public static MarkGroup getMark() {
-    return getInstance().mark;
-  }
-
-  @NotNull
-  public static RegisterGroup getRegister() {
-    return getInstance().register;
-  }
-
-  @NotNull
-  public static FileGroup getFile() {
-    return getInstance().file;
-  }
-
-  @NotNull
-  public static SearchGroup getSearch() {
-    return getInstance().search;
-  }
-
-  @NotNull
-  public static ProcessGroup getProcess() {
-    return getInstance().process;
-  }
-
-  @NotNull
-  public static MacroGroup getMacro() {
-    return getInstance().macro;
-  }
-
-  @NotNull
-  public static DigraphGroup getDigraph() {
-    return getInstance().digraph;
-  }
-
-  @NotNull
-  public static HistoryGroup getHistory() {
-    return getInstance().history;
-  }
-
-  @NotNull
-  public static KeyGroup getKey() {
-    return getInstance().key;
-  }
-
-  @NotNull
-  public static WindowGroup getWindow() {
-    return getInstance().window;
-  }
-
-  @NotNull
-  public static EditorGroup getEditor() {
-    return getInstance().editor;
   }
 
   @NotNull
@@ -340,8 +380,13 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       getInstance().error = true;
     }
-    else if (!Options.getInstance().isSet("visualbell")) {
-      Toolkit.getDefaultToolkit().beep();
+    else if (!OptionsManager.INSTANCE.getVisualbell().isSet()) {
+      // Vim only allows a beep once every half second - :help 'visualbell'
+      final long currentTimeMillis = System.currentTimeMillis();
+      if (currentTimeMillis - lastBeepTimeMillis > 500) {
+        Toolkit.getDefaultToolkit().beep();
+        lastBeepTimeMillis = currentTimeMillis;
+      }
     }
   }
 
@@ -371,23 +416,42 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
     }
   }
 
+  public static class Initialization {
+    private static final AtomicBoolean initialized = new AtomicBoolean(false);
+
+    public static boolean notInitialized() {
+      return !(initialized.get());
+    }
+
+    public static void initialized() {
+      initialized.set(true);
+    }
+  }
+
   @NotNull
   private static VimPlugin getInstance() {
     return (VimPlugin)ApplicationManager.getApplication().getComponent(IDEAVIM_COMPONENT_NAME);
   }
 
   private void turnOnPlugin() {
-    KeyHandler.getInstance().fullReset(null);
+    if (initialized) {
+      KeyHandler.getInstance().fullReset(null);
 
-    getEditor().turnOn();
-    getMotion().turnOn();
+      getEditor().turnOn();
+      getSearch().turnOn();
+      VimListenerManager.INSTANCE.turnOn();
+    } else {
+      initializePlugin();
+    }
   }
 
   private void turnOffPlugin() {
     KeyHandler.getInstance().fullReset(null);
 
     getEditor().turnOff();
-    getMotion().turnOff();
+    getSearch().turnOff();
+    VimListenerManager.INSTANCE.turnOff();
+    ExEntryPanel.fullReset();
   }
 
   private void updateState() {
@@ -395,17 +459,14 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
       if (SystemInfo.isMac) {
         final MacKeyRepeat keyRepeat = MacKeyRepeat.getInstance();
         final Boolean enabled = keyRepeat.isEnabled();
-        final Boolean isKeyRepeat = editor.isKeyRepeat();
+        final Boolean isKeyRepeat = getEditor().isKeyRepeat();
         if ((enabled == null || !enabled) && (isKeyRepeat == null || isKeyRepeat)) {
-          if (Messages.showYesNoDialog("Do you want to enable repeating keys in Mac OS X on press and hold?\n\n" +
-                                       "(You can do it manually by running 'defaults write -g " +
-                                       "ApplePressAndHoldEnabled 0' in the console).", IDEAVIM_NOTIFICATION_TITLE,
-                                       Messages.getQuestionIcon()) == Messages.YES) {
-            editor.setKeyRepeat(true);
+          if (VimPlugin.getNotifications().enableRepeatingMode() == Messages.YES) {
+            getEditor().setKeyRepeat(true);
             keyRepeat.setEnabled(true);
           }
           else {
-            editor.setKeyRepeat(false);
+            getEditor().setKeyRepeat(false);
           }
         }
       }
@@ -419,115 +480,53 @@ public class VimPlugin implements ApplicationComponent, PersistentStateComponent
           keymap = manager.getKeymap(DefaultKeymap.getInstance().getDefaultKeymapName());
         }
         assert keymap != null : "Default keymap not found";
-        new Notification(
-          VimPlugin.IDEAVIM_STICKY_NOTIFICATION_ID,
-          VimPlugin.IDEAVIM_NOTIFICATION_TITLE,
-          String.format("IdeaVim plugin doesn't use the special \"Vim\" keymap any longer. " +
-                        "Switching to \"%s\" keymap.<br/><br/>" +
-                        "Now it is possible to set up:<br/>" +
-                        "<ul>" +
-                        "<li>Vim keys in your ~/.ideavimrc file using key mapping commands</li>" +
-                        "<li>IDE action shortcuts in \"File | Settings | Keymap\"</li>" +
-                        "<li>Vim or IDE handlers for conflicting shortcuts in <a href='#settings'>Vim Emulation</a> settings</li>" +
-                        "</ul>", keymap.getPresentableName()),
-          NotificationType.INFORMATION,
-          new NotificationListener.Adapter() {
-            @Override
-            protected void hyperlinkActivated(@NotNull Notification notification, @NotNull HyperlinkEvent e) {
-              ShowSettingsUtil.getInstance().editConfigurable((Project)null, new VimEmulationConfigurable());
-            }
-          }).notify(null);
+        VimPlugin.getNotifications().specialKeymap(keymap, new NotificationListener.Adapter() {
+          @Override
+          protected void hyperlinkActivated(@NotNull Notification notification, @NotNull HyperlinkEvent e) {
+            ShowSettingsUtil.getInstance().editConfigurable((Project)null, new VimEmulationConfigurable());
+          }
+        });
         manager.setActiveKeymap(keymap);
       }
       if (previousStateVersion > 0 && previousStateVersion < 4) {
-        new Notification(
-          VimPlugin.IDEAVIM_STICKY_NOTIFICATION_ID,
-          VimPlugin.IDEAVIM_NOTIFICATION_TITLE,
-          "The ~/.vimrc file is no longer read by default, use ~/.ideavimrc instead. You can read it from your " +
-          "~/.ideavimrc using this command:<br/><br/>" +
-          "<code>source ~/.vimrc</code>",
-          NotificationType.INFORMATION).notify(null);
+        VimPlugin.getNotifications().noVimrcAsDefault();
       }
     }
   }
 
-  /**
-   * This sets up some listeners so we can handle various events that occur
-   */
-  private void setupListeners() {
-    final EventFacade eventFacade = EventFacade.getInstance();
+  @Override
+  public void loadState(@NotNull final Element element) {
+    LOG.debug("Loading state");
 
-    setupStatisticsReporter(eventFacade);
-
-    DocumentManager.getInstance().addDocumentListener(new MarkGroup.MarkUpdater());
-    DocumentManager.getInstance().addDocumentListener(new SearchGroup.DocumentSearchListener());
-
-    eventFacade.addProjectManagerListener(new ProjectManagerAdapter() {
-      @Override
-      public void projectOpened(@NotNull final Project project) {
-        eventFacade.addFileEditorManagerListener(project, new MotionGroup.MotionEditorChange());
-        eventFacade.addFileEditorManagerListener(project, new FileGroup.SelectionCheck());
-        eventFacade.addFileEditorManagerListener(project, new SearchGroup.EditorSelectionCheck());
-      }
-    });
-  }
-
-  /**
-   * Reports statistics about installed IdeaVim and enabled Vim emulation.
-   *
-   * See https://github.com/go-lang-plugin-org/go-lang-idea-plugin/commit/5182ab4a1d01ad37f6786268a2fe5e908575a217
-   */
-  private void setupStatisticsReporter(@NotNull EventFacade eventFacade) {
-    final Application application = ApplicationManager.getApplication();
-    eventFacade.addEditorFactoryListener(new EditorFactoryAdapter() {
-      @Override
-      public void editorCreated(@NotNull EditorFactoryEvent event) {
-        final PropertiesComponent propertiesComponent = PropertiesComponent.getInstance();
-        final long lastUpdate = propertiesComponent.getOrInitLong(IDEAVIM_STATISTICS_TIMESTAMP_KEY, 0);
-        final boolean outOfDate = lastUpdate == 0 ||
-                                  System.currentTimeMillis() - lastUpdate > TimeUnit.DAYS.toMillis(1);
-        if (outOfDate && isEnabled()) {
-          application.executeOnPooledThread(new Runnable() {
-            @Override
-            public void run() {
-              try {
-                final String buildNumber = ApplicationInfo.getInstance().getBuild().asString();
-                final String pluginId = IDEAVIM_PLUGIN_ID;
-                final String version = URLEncoder.encode(getVersion(), CharsetToolkit.UTF8);
-                final String os = URLEncoder.encode(SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION,
-                                                    CharsetToolkit.UTF8);
-                final String uid = UpdateChecker.getInstallationUID(PropertiesComponent.getInstance());
-                final String url =
-                  "https://plugins.jetbrains.com/plugins/list" +
-                  "?pluginId=" + pluginId +
-                  "&build=" + buildNumber +
-                  "&pluginVersion=" + version +
-                  "&os=" + os +
-                  "&uuid=" + uid;
-                PropertiesComponent.getInstance().setValue(IDEAVIM_STATISTICS_TIMESTAMP_KEY,
-                                                           String.valueOf(System.currentTimeMillis()));
-                HttpRequests.request(url).connect(new HttpRequests.RequestProcessor<Object>() {
-                    @Override
-                    public Object process(@NotNull HttpRequests.Request request) throws IOException {
-                      LOG.info("Sending statistics: " + url);
-                      try {
-                        JDOMUtil.load(request.getInputStream());
-                      }
-                      catch (JDOMException e) {
-                        LOG.warn(e);
-                      }
-                      return null;
-                    }
-                  }
-                );
-              }
-              catch (IOException e) {
-                LOG.warn(e);
-              }
-            }
-          });
+    Runnable setup = () -> {
+      // Restore whether the plugin is enabled or not
+      Element state = element.getChild("state");
+      if (state != null) {
+        try {
+          previousStateVersion = Integer.parseInt(state.getAttributeValue("version"));
         }
+        catch (NumberFormatException ignored) {
+        }
+        enabled = Boolean.parseBoolean(state.getAttributeValue("enabled"));
+        previousKeyMap = state.getAttributeValue("keymap");
       }
-    }, application);
+
+      if (previousStateVersion > 0 && previousStateVersion < 5) {
+        // Migrate settings from 4 to 5 version
+        getMark().readData(element);
+        getRegister().readData(element);
+        getSearch().readData(element);
+        getHistory().readData(element);
+      }
+      getKey().readData(element);
+      getEditor().readData(element);
+      this.state.readData(element);
+    };
+
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      setup.run();
+    } else {
+      ApplicationManager.getApplication().executeOnPooledThread(setup);
+    }
   }
 }

@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2014 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.change.shift;
@@ -21,30 +21,66 @@ package com.maddyhome.idea.vim.action.change.shift;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.maddyhome.idea.vim.VimPlugin;
 import com.maddyhome.idea.vim.command.Argument;
-import com.maddyhome.idea.vim.handler.CaretOrder;
+import com.maddyhome.idea.vim.command.Command;
+import com.maddyhome.idea.vim.command.CommandFlags;
+import com.maddyhome.idea.vim.command.MappingMode;
 import com.maddyhome.idea.vim.handler.ChangeEditorActionHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+
 /**
  * @author Aleksey Lagoshin
  */
-public class AutoIndentMotionAction extends EditorAction {
-  protected AutoIndentMotionAction() {
-    super(new ChangeEditorActionHandler(true, CaretOrder.DECREASING_OFFSET) {
-      @Override
-      public boolean execute(@NotNull Editor editor, @NotNull Caret caret, @NotNull DataContext context, int count,
-                             int rawCount, @Nullable Argument argument) {
-        if (argument == null) {
-          return false;
-        }
+public class AutoIndentMotionAction extends ChangeEditorActionHandler.ForEachCaret {
+  @NotNull
+  @Override
+  public Set<MappingMode> getMappingModes() {
+    return MappingMode.N;
+  }
 
-        VimPlugin.getChange().autoIndentMotion(editor, caret, context, count, rawCount, argument);
-        return true;
-      }
-    });
+  @NotNull
+  @Override
+  public Set<List<KeyStroke>> getKeyStrokesSet() {
+    return parseKeysSet("=");
+  }
+
+  @NotNull
+  @Override
+  public Command.Type getType() {
+    return Command.Type.CHANGE;
+  }
+
+  @NotNull
+  @Override
+  public Argument.Type getArgumentType() {
+    return Argument.Type.MOTION;
+  }
+
+  @NotNull
+  @Override
+  public EnumSet<CommandFlags> getFlags() {
+    return EnumSet.of(CommandFlags.FLAG_DUPLICABLE_OPERATOR);
+  }
+
+  @Override
+  public boolean execute(@NotNull Editor editor,
+                         @NotNull Caret caret,
+                         @NotNull DataContext context,
+                         int count,
+                         int rawCount,
+                         @Nullable Argument argument) {
+    if (argument == null) {
+      return false;
+    }
+
+    VimPlugin.getChange().autoIndentMotion(editor, caret, context, count, rawCount, argument);
+    return true;
   }
 }

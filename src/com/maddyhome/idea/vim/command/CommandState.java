@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,40 +13,45 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.command;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.maddyhome.idea.vim.VimPlugin;
-import com.maddyhome.idea.vim.helper.EditorData;
-import com.maddyhome.idea.vim.key.ParentNode;
+import com.maddyhome.idea.vim.helper.UserDataManager;
+import com.maddyhome.idea.vim.key.CommandPartNode;
 import com.maddyhome.idea.vim.option.NumberOption;
-import com.maddyhome.idea.vim.option.Options;
+import com.maddyhome.idea.vim.option.OptionsManager;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Stack;
+import java.util.stream.Collectors;
 
 public class CommandState {
-  public static final int DEFAULT_TIMEOUT_LENGTH = 1000;
+  private static final int DEFAULT_TIMEOUT_LENGTH = 1000;
 
   @Nullable private static Command ourLastChange = null;
   private char myLastChangeRegister;
 
-  @NotNull private final Stack<State> myStates = new Stack<State>();
+  @NotNull private final Stack<State> myStates = new Stack<>();
   @NotNull private final State myDefaultState = new State(Mode.COMMAND, SubMode.NONE, MappingMode.NORMAL);
   @Nullable private Command myCommand;
-  @NotNull private ParentNode myCurrentNode = VimPlugin.getKey().getKeyRoot(getMappingMode());
-  @NotNull private final List<KeyStroke> myMappingKeys = new ArrayList<KeyStroke>();
+  @NotNull private CommandPartNode myCurrentNode = VimPlugin.getKey().getKeyRoot(getMappingMode());
+  @NotNull private final List<KeyStroke> myMappingKeys = new ArrayList<>();
   @NotNull private final Timer myMappingTimer;
-  private int myFlags;
+  private EnumSet<CommandFlags> myFlags = EnumSet.noneOf(CommandFlags.class);
   private boolean myIsRecording = false;
+  private static Logger logger = Logger.getInstance(CommandState.class.getName());
 
   private CommandState() {
     myMappingTimer = new Timer(DEFAULT_TIMEOUT_LENGTH, null);
@@ -55,44 +60,20 @@ public class CommandState {
     myLastChangeRegister = VimPlugin.getRegister().getDefaultRegister();
   }
 
+  @Contract("null -> new")
   @NotNull
   public static CommandState getInstance(@Nullable Editor editor) {
     if (editor == null) {
       return new CommandState();
     }
 
-    CommandState res = EditorData.getCommandState(editor);
+    CommandState res = UserDataManager.getVimCommandState(editor);
     if (res == null) {
       res = new CommandState();
-      EditorData.setCommandState(editor, res);
+      UserDataManager.setVimCommandState(editor, res);
     }
 
     return res;
-  }
-
-  public static boolean inInsertMode(@Nullable Editor editor) {
-    final Mode mode = getInstance(editor).getMode();
-    return mode == Mode.INSERT || mode == Mode.REPLACE;
-  }
-
-  public static boolean inRepeatMode(@Nullable Editor editor) {
-    final Mode mode = getInstance(editor).getMode();
-    return mode == Mode.REPEAT;
-  }
-
-  public static boolean inVisualCharacterMode(@Nullable Editor editor) {
-    final CommandState state = getInstance(editor);
-    return state.getMode() == Mode.VISUAL && state.getSubMode() == SubMode.VISUAL_CHARACTER;
-  }
-
-  public static boolean inVisualBlockMode(@Nullable Editor editor) {
-    final CommandState state = getInstance(editor);
-    return state.getMode() == Mode.VISUAL && state.getSubMode() == SubMode.VISUAL_BLOCK;
-  }
-
-  public static boolean inSingleCommandMode(@Nullable Editor editor) {
-    final CommandState state = getInstance(editor);
-    return state.getMode() == Mode.COMMAND && state.getSubMode() == SubMode.SINGLE_COMMAND;
   }
 
   @Nullable
@@ -105,22 +86,31 @@ public class CommandState {
     setFlags(cmd.getFlags());
   }
 
-  public int getFlags() {
+  public EnumSet<CommandFlags> getFlags() {
     return myFlags;
   }
 
-  public void setFlags(int flags) {
+  public void setFlags(EnumSet<CommandFlags> flags) {
     this.myFlags = flags;
   }
 
   public void pushState(@NotNull Mode mode, @NotNull SubMode submode, @NotNull MappingMode mappingMode) {
-    myStates.push(new State(mode, submode, mappingMode));
+    final State newState = new State(mode, submode, mappingMode);
+    logger.info("Push new state: " + newState.toSimpleString());
+    if (logger.isDebugEnabled()) {
+      logger.debug("Stack state before push: " + toSimpleString());
+    }
+    myStates.push(newState);
     updateStatus();
   }
 
   public void popState() {
-    myStates.pop();
+    final State popped = myStates.pop();
     updateStatus();
+    logger.info("Pop state: " + popped.toSimpleString());
+    if (logger.isDebugEnabled()) {
+      logger.debug("Stack state after pop: " + toSimpleString());
+    }
   }
 
   @NotNull
@@ -144,10 +134,8 @@ public class CommandState {
   }
 
   public void startMappingTimer(@NotNull ActionListener actionListener) {
-    final NumberOption timeoutLength = Options.getInstance().getNumberOption("timeoutlen");
-    if (timeoutLength != null) {
-      myMappingTimer.setInitialDelay(timeoutLength.value());
-    }
+    final NumberOption timeoutLength = OptionsManager.INSTANCE.getTimeoutlen();
+    myMappingTimer.setInitialDelay(timeoutLength.value());
     for (ActionListener listener : myMappingTimer.getActionListeners()) {
       myMappingTimer.removeActionListener(listener);
     }
@@ -186,6 +174,7 @@ public class CommandState {
         msg.append("REPLACE");
         break;
       case VISUAL:
+      case SELECT:
         if (pos > 0) {
           State tmp = myStates.get(pos - 1);
           if (tmp.getMode() == Mode.COMMAND && tmp.getSubMode() == SubMode.SINGLE_COMMAND) {
@@ -195,13 +184,13 @@ public class CommandState {
         }
         switch (state.getSubMode()) {
           case VISUAL_LINE:
-            msg.append("VISUAL LINE");
+            msg.append(state.getMode()).append(" LINE");
             break;
           case VISUAL_BLOCK:
-            msg.append("VISUAL BLOCK");
+            msg.append(state.getMode()).append(" BLOCK");
             break;
           default:
-            msg.append("VISUAL");
+            msg.append(state.getMode());
         }
         break;
     }
@@ -288,12 +277,17 @@ public class CommandState {
   }
 
   @NotNull
-  public ParentNode getCurrentNode() {
+  public CommandPartNode getCurrentNode() {
     return myCurrentNode;
   }
 
-  public void setCurrentNode(@NotNull ParentNode currentNode) {
+  public void setCurrentNode(@NotNull CommandPartNode currentNode) {
     this.myCurrentNode = currentNode;
+  }
+
+  public String toSimpleString() {
+    return myStates.stream().map(State::toSimpleString)
+      .collect(Collectors.joining(", "));
   }
 
   private State currentState() {
@@ -307,7 +301,7 @@ public class CommandState {
 
   private void updateStatus() {
     final StringBuilder msg = new StringBuilder();
-    if (Options.getInstance().isSet("showmode")) {
+    if (OptionsManager.INSTANCE.getShowmode().isSet()) {
       msg.append(getStatusString(myStates.size() - 1));
     }
 
@@ -322,27 +316,19 @@ public class CommandState {
   }
 
   public enum Mode {
-    COMMAND,
-    INSERT,
-    REPLACE,
-    REPEAT,
-    VISUAL,
-    EX_ENTRY
+    COMMAND, INSERT, REPLACE, REPEAT, VISUAL, SELECT, CMD_LINE
   }
 
   public enum SubMode {
-    NONE,
-    SINGLE_COMMAND,
-    VISUAL_CHARACTER,
-    VISUAL_LINE,
-    VISUAL_BLOCK
+    NONE, SINGLE_COMMAND, VISUAL_CHARACTER, VISUAL_LINE, VISUAL_BLOCK
   }
 
-  private class State {
+  private static class State {
     @NotNull private final Mode myMode;
     @NotNull private SubMode mySubMode;
     @NotNull private final MappingMode myMappingMode;
 
+    @Contract(pure = true)
     public State(@NotNull Mode mode, @NotNull SubMode subMode, @NotNull MappingMode mappingMode) {
       this.myMode = mode;
       this.mySubMode = subMode;
@@ -366,6 +352,10 @@ public class CommandState {
     @NotNull
     public MappingMode getMappingMode() {
       return myMappingMode;
+    }
+
+    public String toSimpleString() {
+      return myMode + ":" + mySubMode;
     }
   }
 }

@@ -1,6 +1,6 @@
 /*
  * IdeaVim - Vim emulator for IDEs based on the IntelliJ platform
- * Copyright (C) 2003-2016 The IdeaVim authors
+ * Copyright (C) 2003-2019 The IdeaVim authors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,58 +13,57 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 package com.maddyhome.idea.vim.action.change.insert;
 
-import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
+import com.maddyhome.idea.vim.RegisterActions;
 import com.maddyhome.idea.vim.VimPlugin;
-import com.maddyhome.idea.vim.action.VimCommandAction;
 import com.maddyhome.idea.vim.command.Command;
 import com.maddyhome.idea.vim.command.MappingMode;
 import com.maddyhome.idea.vim.handler.EditorActionHandlerBase;
+import com.maddyhome.idea.vim.handler.VimActionHandler;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.util.List;
 import java.util.Set;
 
-public class InsertExitModeAction extends VimCommandAction {
-  private static final String ACTION_ID = "VimInsertExitMode";
+final public class InsertExitModeAction extends VimActionHandler.SingleExecution {
+  private static final String ACTION_ID = "VimInsertExitModeAction";
 
-  protected InsertExitModeAction() {
-    super(new EditorActionHandlerBase() {
-      @Override
-      protected boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
-        VimPlugin.getChange().processEscape(editor, context);
-        return true;
-      }
-    });
+  @NotNull
+  public static EditorActionHandlerBase getInstance() {
+    return RegisterActions.findActionOrDie(ACTION_ID);
   }
-  
+
+  @Contract(pure = true)
   @NotNull
   @Override
-  public Set<MappingMode> getMappingModes() {
+  final public Set<MappingMode> getMappingModes() {
     return MappingMode.I;
   }
 
   @NotNull
   @Override
-  public Set<List<KeyStroke>> getKeyStrokesSet() {
-    return parseKeysSet("<C-[>", "<C-C>", "<Esc>", "<C-\\><C-N>");
+  final public Set<List<KeyStroke>> getKeyStrokesSet() {
+    return parseKeysSet("<C-[>", "<C-C>", "<Esc>");
   }
 
+  @Contract(pure = true)
   @NotNull
   @Override
-  public Command.Type getType() {
+  final public Command.Type getType() {
     return Command.Type.INSERT;
   }
 
-  @NotNull
-  public static VimCommandAction getInstance() {
-    return (VimCommandAction)ActionManager.getInstance().getAction(ACTION_ID);
+  @Override
+  public boolean execute(@NotNull Editor editor, @NotNull DataContext context, @NotNull Command cmd) {
+    VimPlugin.getChange().processEscape(editor, context);
+    return true;
   }
 }
