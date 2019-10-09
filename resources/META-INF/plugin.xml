@@ -245,7 +245,6 @@
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.SelectEnableLineModeAction"/>
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.SelectEnableBlockModeAction"/>
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.motion.SelectMotionRightAction"/>
-    <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.motion.SelectMotionLeftAction"/>
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.SelectToggleVisualMode"/>
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.SelectEnterAction"/>
     <vimAction implementation="com.maddyhome.idea.vim.action.motion.select.SelectEscapeAction"/>
