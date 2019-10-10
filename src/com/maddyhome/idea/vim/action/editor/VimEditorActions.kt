@@ -54,10 +54,7 @@ class VimEditorDown : VimActionHandler.SingleExecution() {
 
   override val mappingModes: Set<MappingMode> = MappingMode.I
 
-  override val keyStrokesSet: Set<List<KeyStroke>> = setOf(
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0)),
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_KP_DOWN, 0))
-  )
+  override val keyStrokesSet: Set<List<KeyStroke>> = setOf();
 
   override val type: Command.Type = Command.Type.INSERT
 
@@ -94,10 +91,7 @@ class VimEditorUp : VimActionHandler.SingleExecution() {
 
   override val mappingModes: Set<MappingMode> = MappingMode.I
 
-  override val keyStrokesSet: Set<List<KeyStroke>> = setOf(
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0)),
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_KP_UP, 0))
-  )
+  override val keyStrokesSet: Set<List<KeyStroke>> = setOf();
 
   override val type: Command.Type = Command.Type.INSERT
 

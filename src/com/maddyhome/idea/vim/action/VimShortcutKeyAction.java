@@ -62,14 +62,9 @@ public class VimShortcutKeyAction extends AnAction implements DumbAware {
   @NotNull public static final Set<KeyStroke> VIM_ONLY_EDITOR_KEYS = ImmutableSet.<KeyStroke>builder()
     .addAll(getKeyStrokes(VK_ENTER, 0))
     .addAll(getKeyStrokes(VK_ESCAPE, 0))
-    .addAll(getKeyStrokes(VK_TAB, 0))
-    .addAll(getKeyStrokes(VK_BACK_SPACE, 0, CTRL_MASK))
-    .addAll(getKeyStrokes(VK_INSERT, 0))
-    .addAll(getKeyStrokes(VK_DELETE, 0, CTRL_MASK))
-    .addAll(getKeyStrokes(VK_UP, 0, CTRL_MASK, SHIFT_MASK))
-    .addAll(getKeyStrokes(VK_DOWN, 0, CTRL_MASK, SHIFT_MASK))
-    .addAll(getKeyStrokes(VK_LEFT, 0, CTRL_MASK, SHIFT_MASK, CTRL_MASK | SHIFT_MASK))
-    .addAll(getKeyStrokes(VK_RIGHT, 0, CTRL_MASK, SHIFT_MASK, CTRL_MASK | SHIFT_MASK))
+    .addAll(getKeyStrokes(VK_DOWN, 0, CTRL_MASK))
+    .addAll(getKeyStrokes(VK_LEFT, 0, CTRL_MASK, CTRL_MASK | SHIFT_MASK))
+    .addAll(getKeyStrokes(VK_RIGHT, 0, CTRL_MASK, CTRL_MASK | SHIFT_MASK))
     .addAll(getKeyStrokes(VK_HOME, 0, CTRL_MASK, SHIFT_MASK, CTRL_MASK | SHIFT_MASK))
     .addAll(getKeyStrokes(VK_END, 0, CTRL_MASK, SHIFT_MASK, CTRL_MASK | SHIFT_MASK))
     .addAll(getKeyStrokes(VK_PAGE_UP, 0, SHIFT_MASK, CTRL_MASK | SHIFT_MASK))
@@ -80,8 +75,6 @@ public class VimShortcutKeyAction extends AnAction implements DumbAware {
     .addAll(getKeyStrokes(VK_ENTER, 0))
     .addAll(getKeyStrokes(VK_ESCAPE, 0))
     .addAll(getKeyStrokes(VK_TAB, 0))
-    .addAll(getKeyStrokes(VK_UP, 0))
-    .addAll(getKeyStrokes(VK_DOWN, 0))
     .build();
 
   private static final Logger ourLogger = Logger.getInstance(VimShortcutKeyAction.class.getName());

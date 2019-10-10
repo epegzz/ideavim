@@ -839,7 +839,7 @@ public class ChangeGroup {
 
   private boolean activeTemplateWithLeftRightMotion(Editor editor, KeyStroke keyStroke) {
     return HelperKt.isTemplateActive(editor)
-      && (keyStroke.getKeyCode() == KeyEvent.VK_LEFT || keyStroke.getKeyCode() == KeyEvent.VK_RIGHT);
+      && (keyStroke.getKeyCode() == KeyEvent.VK_RIGHT);
   }
 
   /**

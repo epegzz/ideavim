@@ -51,10 +51,7 @@ class MotionRightInsertAction : MotionActionHandler.ForEachCaret() {
 
   override val mappingModes: Set<MappingMode> = MappingMode.I
 
-  override val keyStrokesSet: Set<List<KeyStroke>> = setOf(
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0)),
-    listOf(KeyStroke.getKeyStroke(KeyEvent.VK_KP_RIGHT, 0))
-  )
+  override val keyStrokesSet: Set<List<KeyStroke>> = setOf();
 
   override fun getOffset(editor: Editor,
                          caret: Caret,

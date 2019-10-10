@@ -39,6 +39,7 @@ import com.maddyhome.idea.vim.action.motion.search.SearchEntryRevAction;
 import com.maddyhome.idea.vim.command.*;
 import com.maddyhome.idea.vim.extension.VimExtensionHandler;
 import com.maddyhome.idea.vim.group.RegisterGroup;
+import com.maddyhome.idea.vim.group.visual.VimSelection;
 import com.maddyhome.idea.vim.group.visual.VisualGroupKt;
 import com.maddyhome.idea.vim.handler.EditorActionHandlerBase;
 import com.maddyhome.idea.vim.helper.*;
@@ -60,6 +61,7 @@ import java.util.stream.Collectors;
 
 import static com.intellij.openapi.actionSystem.CommonDataKeys.*;
 import static com.intellij.openapi.actionSystem.PlatformDataKeys.PROJECT_FILE_DIRECTORY;
+import static com.maddyhome.idea.vim.helper.StringHelper.parseKeys;
 
 /**
  * This handlers every keystroke that the user can argType except those that are still valid hotkeys for various Idea
@@ -356,8 +358,9 @@ public class KeyHandler {
       mappingKeys.add(key);
       if (!application.isUnitTestMode() && OptionsManager.INSTANCE.getTimeout().isSet()) {
         commandState.startMappingTimer(actionEvent -> application.invokeLater(() -> {
+          final KeyStroke firstKey = mappingKeys.get(0);
           mappingKeys.clear();
-          if (editor.isDisposed()) {
+          if (editor.isDisposed() || firstKey.equals(parseKeys("<Plug>").get(0))) {
             return;
           }
           for (KeyStroke keyStroke : fromKeys) {
@@ -398,17 +401,27 @@ public class KeyHandler {
         if (isPendingMode &&
             !currentCmd.isEmpty() &&
             currentCmd.peek().getArgument() == null) {
-          Map<Caret, Pair<Integer, Integer>> offsets = new HashMap<>();
+          Map<Caret, VimSelection> offsets = new HashMap<>();
+
           for (Caret caret : editor.getCaretModel().getAllCarets()) {
             @Nullable Integer startOffset = startOffsets.get(caret);
             if (caret.hasSelection()) {
-              offsets.put(caret, new Pair<>(caret.getSelectionStart(), caret.getSelectionEnd()));
+              final VimSelection vimSelection = VimSelection.Companion
+                .create(UserDataManager.getVimSelectionStart(caret), caret.getOffset(),
+                        SelectionType.fromSubMode(CommandStateHelper.getSubMode(editor)), editor);
+              offsets.put(caret, vimSelection);
+              commandState.popState();
             }
             else if (startOffset != null && startOffset != caret.getOffset()) {
-              offsets.put(caret, new Pair<>(startOffset, caret.getOffset()));
-            }
-            if (startOffset != null) {
-              try(VimListenerSuppressor.Locked ignored = SelectionVimListenerSuppressor.INSTANCE.lock()) {
+              int endOffset = caret.getOffset();
+              if (startOffset < endOffset) {
+                endOffset -= 1;
+              }
+              final VimSelection vimSelection = VimSelection.Companion
+                .create(startOffset, endOffset, SelectionType.CHARACTER_WISE, editor);
+              offsets.put(caret, vimSelection);
+
+              try (VimListenerSuppressor.Locked ignored = SelectionVimListenerSuppressor.INSTANCE.lock()) {
                 // Move caret to the initial offset for better undo action
                 //  This is not a necessary thing, but without it undo action look less convenient
                 editor.getCaretModel().moveToOffset(startOffset);
@@ -440,22 +453,34 @@ public class KeyHandler {
       //   However, these keys should be processed as usual when user enters "p"
       //   and the following for loop does exactly that.
       //
-      // Okay, why the first key is handler separately?
+      // Okay, look at the code below. Why is the first key handled separately?
       // Let's assume the next mappings:
       //   - map ds j
       //   - map I 2l
       // If user enters `dI`, the first `d` will be caught be this handler because it's a prefix for `ds` command.
       //  After the user enters `I`, the caught `d` should be processed without mapping and the rest of keys
       //  should be processed with mappings (to make I work)
+      //
+      // Additionally, the <Plug>mappings are not executed if the are failed to map to somethings.
+      //   E.g.
+      //   - map <Plug>iA  someAction
+      //   - map I <Plug>i
+      //   For `IA` someAction should be executed.
+      //   But if the user types `Ib`, `<Plug>i` won't be executed again. Only `b` will be passed to keyHandler.
       if (mappingKeys.isEmpty()) return false;
 
       // Well, this will always be false, but just for protection
       if (fromKeys.isEmpty()) return false;
       final List<KeyStroke> unhandledKeys = new ArrayList<>(fromKeys);
       mappingKeys.clear();
-      handleKey(editor, unhandledKeys.get(0), context, false);
-      for (KeyStroke keyStroke : unhandledKeys.subList(1, unhandledKeys.size())) {
-        handleKey(editor, keyStroke, context, true);
+
+      if (unhandledKeys.get(0).equals(parseKeys("<Plug>").get(0))) {
+        handleKey(editor, unhandledKeys.get(unhandledKeys.size() - 1), context);
+      } else {
+        handleKey(editor, unhandledKeys.get(0), context, false);
+        for (KeyStroke keyStroke : unhandledKeys.subList(1, unhandledKeys.size())) {
+          handleKey(editor, keyStroke, context, true);
+        }
       }
       return true;
     }

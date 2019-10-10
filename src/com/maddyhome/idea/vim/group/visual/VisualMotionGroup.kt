@@ -116,6 +116,7 @@ class VisualMotionGroup {
   fun controlNonVimSelectionChange(editor: Editor, selectionSource: VimListenerManager.SelectionSource = VimListenerManager.SelectionSource.OTHER) {
     VimVisualTimer.singleTask(editor.mode) { initialMode ->
       logger.info("Adjust non-vim selection. Source: $selectionSource")
+      /*
       if (initialMode?.hasVisualSelection == true || editor.caretModel.allCarets.any(Caret::hasSelection)) {
         if (editor.caretModel.allCarets.any(Caret::hasSelection)) {
           val commandState = CommandState.getInstance(editor)
@@ -161,6 +162,7 @@ class VisualMotionGroup {
           KeyHandler.getInstance().reset(editor)
         }
       }
+      */
       updateCaretState(editor)
       logger.info("${editor.mode} is enabled")
     }
